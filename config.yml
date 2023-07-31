@@ -1,2 +1,5 @@
-mountPoint: /tmp/w1
+mountPoint: /tmp/w3
 secretPath: /tmp/w2
+allowProcess:
+  - "cat"
+  - "ls"

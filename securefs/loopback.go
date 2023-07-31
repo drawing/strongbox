@@ -65,7 +65,99 @@ type SecureLoopbackNode struct {
 	RootData *SecureLoopbackRoot
 }
 
+func (n *SecureLoopbackNode) Statfs(ctx context.Context, out *fuse.StatfsOut) syscall.Errno {
+	if !CheckAllowProcess("Statfs", ctx) {
+		return fs.ToErrno(os.ErrPermission)
+	}
+	return n.LoopbackNode.Statfs(ctx, out)
+}
+
+func (n *SecureLoopbackNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	if !CheckAllowProcess("Lookup", ctx) {
+		return nil, fs.ToErrno(os.ErrPermission)
+	}
+	return n.LoopbackNode.Lookup(ctx, name, out)
+}
+func (n *SecureLoopbackNode) Mknod(ctx context.Context, name string, mode, rdev uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	if !CheckAllowProcess("Mknod", ctx) {
+		return nil, fs.ToErrno(os.ErrPermission)
+	}
+	return n.LoopbackNode.Mknod(ctx, name, mode, rdev, out)
+}
+func (n *SecureLoopbackNode) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	if !CheckAllowProcess("Mkdir", ctx) {
+		return nil, fs.ToErrno(os.ErrPermission)
+	}
+	return n.LoopbackNode.Mkdir(ctx, name, mode, out)
+}
+func (n *SecureLoopbackNode) Rmdir(ctx context.Context, name string) syscall.Errno {
+	if !CheckAllowProcess("Mkdir", ctx) {
+		return fs.ToErrno(os.ErrPermission)
+	}
+	return n.LoopbackNode.Rmdir(ctx, name)
+}
+func (n *SecureLoopbackNode) Unlink(ctx context.Context, name string) syscall.Errno {
+	if !CheckAllowProcess("Unlink", ctx) {
+		return fs.ToErrno(os.ErrPermission)
+	}
+	return n.LoopbackNode.Rmdir(ctx, name)
+}
+func (n *SecureLoopbackNode) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string, flags uint32) syscall.Errno {
+	if !CheckAllowProcess("Rename", ctx) {
+		return fs.ToErrno(os.ErrPermission)
+	}
+	return n.LoopbackNode.Rename(ctx, name, newParent, newName, flags)
+}
+func (n *SecureLoopbackNode) Symlink(ctx context.Context, target, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	if !CheckAllowProcess("Symlink", ctx) {
+		return nil, fs.ToErrno(os.ErrPermission)
+	}
+	return n.LoopbackNode.Symlink(ctx, target, name, out)
+}
+func (n *SecureLoopbackNode) Link(ctx context.Context, target fs.InodeEmbedder, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	if !CheckAllowProcess("Link", ctx) {
+		return nil, fs.ToErrno(os.ErrPermission)
+	}
+	return n.LoopbackNode.Link(ctx, target, name, out)
+}
+func (n *SecureLoopbackNode) Readlink(ctx context.Context) ([]byte, syscall.Errno) {
+	if !CheckAllowProcess("Readlink", ctx) {
+		return nil, fs.ToErrno(os.ErrPermission)
+	}
+	return n.LoopbackNode.Readlink(ctx)
+}
+func (n *SecureLoopbackNode) Opendir(ctx context.Context) syscall.Errno {
+	// TODO fake
+	if !CheckAllowProcess("Opendir", ctx) {
+		return fs.ToErrno(os.ErrPermission)
+	}
+	return n.LoopbackNode.Opendir(ctx)
+}
+func (n *SecureLoopbackNode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
+	// TODO fake
+	if !CheckAllowProcess("Readdir", ctx) {
+		return nil, fs.ToErrno(os.ErrPermission)
+	}
+	return n.LoopbackNode.Readdir(ctx)
+}
+func (n *SecureLoopbackNode) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
+	if !CheckAllowProcess("Getattr", ctx) {
+		return fs.ToErrno(os.ErrPermission)
+	}
+	return n.LoopbackNode.Getattr(ctx, f, out)
+}
+func (n *SecureLoopbackNode) Setattr(ctx context.Context, f fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
+	if !CheckAllowProcess("Setattr", ctx) {
+		return fs.ToErrno(os.ErrPermission)
+	}
+	return n.LoopbackNode.Setattr(ctx, f, in, out)
+}
+
 func (n *SecureLoopbackNode) Create(ctx context.Context, name string, flags uint32, mode uint32, out *fuse.EntryOut) (inode *fs.Inode, fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
+	if !CheckAllowProcess("Create", ctx) {
+		return nil, nil, 0, fs.ToErrno(os.ErrPermission)
+	}
+
 	p := filepath.Join(n.Path(), name)
 	flags = flags &^ syscall.O_APPEND
 	fd, err := syscall.Open(p, int(flags)|os.O_CREATE, mode)
@@ -88,6 +180,9 @@ func (n *SecureLoopbackNode) Create(ctx context.Context, name string, flags uint
 }
 
 func (n *SecureLoopbackNode) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
+	if !CheckAllowProcess("Open", ctx) {
+		return nil, 0, fs.ToErrno(os.ErrPermission)
+	}
 	flags = flags &^ syscall.O_APPEND
 	p := n.Path()
 	f, err := syscall.Open(p, int(flags), 0)

@@ -14,7 +14,7 @@ type Configuration struct {
 	MountPoint string `yaml:"mountPoint,omitempty"`
 	SecretPath string `yaml:"secretPath,omitempty"`
 
-	ImageFile string `yaml:"image,omitempty"`
+	AllowProcess []string `yaml:"allowProcess,omitempty"`
 }
 
 func (c *Configuration) Init(file string) error {
