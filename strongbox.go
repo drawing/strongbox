@@ -2,11 +2,16 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"golang.org/x/term"
+
+	config "strongbox/configuration"
 	"strongbox/securefs"
 
 	"github.com/hanwen/go-fuse/v2/fs"
@@ -17,19 +22,33 @@ import (
 	nested "github.com/antonfisher/nested-logrus-formatter"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/natefinch/lumberjack.v2"
-
-	config "strongbox/configuration"
 )
+
+func credentials() (string, error) {
+	fmt.Print("Enter Password: ")
+	bytePassword, err := term.ReadPassword(int(syscall.Stdin))
+	if err != nil {
+		return "", err
+	}
+	password := string(bytePassword)
+	return strings.TrimSpace(password), nil
+}
 
 func main() {
 	debug := flag.Bool("debug", false, "print debugging messages.")
 	flag.Parse()
 
-	err := config.Cfg.Init("config.yml")
+	passwd, err := credentials()
+
+	if passwd == "" {
+		log.Fatal("must set password")
+	}
+
+	err = config.Cfg.Init("config.yml")
 	if err != nil {
 		log.Fatal("read config failed:", err)
-		return
 	}
+	config.Cfg.SetPasswd(passwd)
 
 	logger := &lumberjack.Logger{
 		Filename:   "logs/box.log",
@@ -42,7 +61,8 @@ func main() {
 	if false {
 		log.SetOutput(logger)
 	}
-	log.SetLevel(log.DebugLevel)
+	// log.SetLevel(log.DebugLevel)
+	log.SetLevel(log.InfoLevel)
 	log.SetFormatter(&nested.Formatter{
 		TimestampFormat: "2006-01-02 15:04:05",
 		HideKeys:        true,

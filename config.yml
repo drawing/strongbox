@@ -1,5 +1,6 @@
-mountPoint: /tmp/w3
+mountPoint: /Users/bodeng/workspace/drawing/strongbox/temp/w1
 secretPath: /tmp/w2
 allowProcess:
-  - "cat"
-  - "ls"
+  - "git"
+  - "Electron"
+  - "Typora"

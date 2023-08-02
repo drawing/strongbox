@@ -4,10 +4,14 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+
+	// "runtime/debug"
 	"syscall"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
+
+	log "github.com/sirupsen/logrus"
 )
 
 func NewSecureLoopbackRoot(rootPath string) (fs.InodeEmbedder, error) {
@@ -23,15 +27,28 @@ func NewSecureLoopbackRoot(rootPath string) (fs.InodeEmbedder, error) {
 			Dev:  uint64(st.Dev),
 		},
 	}
+	root.LoopbackRoot.NewNode = root.HookNewNode
 
-	return root.NewNode(nil, "", &st), nil
+	return root.HookNewNode(&root.LoopbackRoot, nil, "", &st), nil
 }
 
 type SecureLoopbackRoot struct {
 	fs.LoopbackRoot
 }
 
+func (r *SecureLoopbackRoot) HookNewNode(rootData *fs.LoopbackRoot, parent *fs.Inode, name string, st *syscall.Stat_t) fs.InodeEmbedder {
+	log.Debug("Hook NewNode:", name)
+
+	return &SecureLoopbackNode{
+		LoopbackNode: fs.LoopbackNode{
+			RootData: &r.LoopbackRoot,
+		},
+		RootData: r,
+	}
+}
+
 func (r *SecureLoopbackRoot) NewNode(parent *fs.Inode, name string, st *syscall.Stat_t) fs.InodeEmbedder {
+	log.Debug("NewNode:", name)
 	return &SecureLoopbackNode{
 		LoopbackNode: fs.LoopbackNode{
 			RootData: &r.LoopbackRoot,
@@ -76,6 +93,7 @@ func (n *SecureLoopbackNode) Lookup(ctx context.Context, name string, out *fuse.
 	if !CheckAllowProcess("Lookup", ctx) {
 		return nil, fs.ToErrno(os.ErrPermission)
 	}
+
 	return n.LoopbackNode.Lookup(ctx, name, out)
 }
 func (n *SecureLoopbackNode) Mknod(ctx context.Context, name string, mode, rdev uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
@@ -100,7 +118,8 @@ func (n *SecureLoopbackNode) Unlink(ctx context.Context, name string) syscall.Er
 	if !CheckAllowProcess("Unlink", ctx) {
 		return fs.ToErrno(os.ErrPermission)
 	}
-	return n.LoopbackNode.Rmdir(ctx, name)
+	log.Debugf("Unlink: %s %s", n.Path(), name)
+	return n.LoopbackNode.Unlink(ctx, name)
 }
 func (n *SecureLoopbackNode) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string, flags uint32) syscall.Errno {
 	if !CheckAllowProcess("Rename", ctx) {
@@ -133,23 +152,67 @@ func (n *SecureLoopbackNode) Opendir(ctx context.Context) syscall.Errno {
 	}
 	return n.LoopbackNode.Opendir(ctx)
 }
+
+type emptyDir struct {
+}
+
+func (e *emptyDir) HasNext() bool {
+	return false
+}
+func (e *emptyDir) Next() (fuse.DirEntry, syscall.Errno) {
+	return fuse.DirEntry{}, fs.ToErrno(os.ErrNotExist)
+}
+func (e *emptyDir) Close() {}
+
 func (n *SecureLoopbackNode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 	// TODO fake
 	if !CheckAllowProcess("Readdir", ctx) {
-		return nil, fs.ToErrno(os.ErrPermission)
+		// return nil, fs.ToErrno(os.ErrPermission)
+		return &emptyDir{}, fs.OK
 	}
 	return n.LoopbackNode.Readdir(ctx)
 }
+
 func (n *SecureLoopbackNode) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	if !CheckAllowProcess("Getattr", ctx) {
 		return fs.ToErrno(os.ErrPermission)
 	}
-	return n.LoopbackNode.Getattr(ctx, f, out)
+	// log.Info("node Getattr: path=", n.Path(), ", f=", f)
+	// debug.PrintStack()
+	syserr := n.LoopbackNode.Getattr(ctx, f, out)
+	if syserr != fs.OK {
+		return syserr
+	}
+
+	if out.Mode&syscall.S_IFDIR == 0 {
+		// log.Info("node Getattr: path is file, start change size ", n.Path(), ", f=", f)
+		fd, err := syscall.Open(n.Path(), os.O_RDONLY, 0)
+		if err != nil {
+			return fs.ToErrno(err)
+		}
+
+		buffer := make([]byte, 4)
+
+		readN, err := syscall.Pread(int(fd), buffer, 0)
+		if err != nil || readN < 4 {
+			return fs.OK
+		} else {
+			out.Size = uint64(bytesToInt(buffer))
+			log.Debugf("change size %s %d", n.Path(), out.Size)
+		}
+
+		syscall.Close(fd)
+	}
+
+	return syserr
 }
+
 func (n *SecureLoopbackNode) Setattr(ctx context.Context, f fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
 	if !CheckAllowProcess("Setattr", ctx) {
 		return fs.ToErrno(os.ErrPermission)
 	}
+	log.Info("node Setattr: path=", n.Path(), ", f=", f)
+	// debug.PrintStack()
 	return n.LoopbackNode.Setattr(ctx, f, in, out)
 }
 
