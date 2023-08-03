@@ -6,7 +6,7 @@ This program is used to keep files safe
 - [ ] 以守护进程方式运行
 - [x] 加密文件
 - [x] 进程白名单访问
-- [ ] fake返回
+- [x] fake返回
 - [ ] 测试用例
 - [ ] 介绍文档
 - [x] 文件存储结构 lookback

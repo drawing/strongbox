@@ -15,7 +15,8 @@ type Configuration struct {
 	MountPoint string `yaml:"mountPoint,omitempty"`
 	SecretPath string `yaml:"secretPath,omitempty"`
 
-	AllowProcess []string `yaml:"allowProcess,omitempty"`
+	AllowProcess          []string `yaml:"allowProcess,omitempty"`
+	UpdateProcessDuration int      `yaml:"UpdateProcessDuration,omitempty"`
 
 	SecretKey []byte
 }
@@ -33,6 +34,10 @@ func (c *Configuration) Init(file string) error {
 		return err
 	}
 	log.Debug(c)
+
+	if c.UpdateProcessDuration == 0 {
+		c.UpdateProcessDuration = 30
+	}
 
 	return nil
 }

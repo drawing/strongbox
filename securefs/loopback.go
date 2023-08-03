@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"time"
 
 	// "runtime/debug"
 	"syscall"
@@ -91,7 +92,7 @@ func (n *SecureLoopbackNode) Statfs(ctx context.Context, out *fuse.StatfsOut) sy
 
 func (n *SecureLoopbackNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
 	if !CheckAllowProcess("Lookup", ctx) {
-		return nil, fs.ToErrno(os.ErrPermission)
+		return nil, fs.ToErrno(os.ErrNotExist)
 	}
 
 	return n.LoopbackNode.Lookup(ctx, name, out)
@@ -146,8 +147,10 @@ func (n *SecureLoopbackNode) Readlink(ctx context.Context) ([]byte, syscall.Errn
 	return n.LoopbackNode.Readlink(ctx)
 }
 func (n *SecureLoopbackNode) Opendir(ctx context.Context) syscall.Errno {
-	// TODO fake
 	if !CheckAllowProcess("Opendir", ctx) {
+		if n.LoopbackNode.Path(n.Root()) == "" {
+			return fs.OK
+		}
 		return fs.ToErrno(os.ErrPermission)
 	}
 	return n.LoopbackNode.Opendir(ctx)
@@ -175,6 +178,12 @@ func (n *SecureLoopbackNode) Readdir(ctx context.Context) (fs.DirStream, syscall
 
 func (n *SecureLoopbackNode) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	if !CheckAllowProcess("Getattr", ctx) {
+		if n.LoopbackNode.Path(n.Root()) == "" {
+			out.Mode = 0755
+			out.Atime = uint64(time.Now().Unix())
+			out.Ctime = uint64(time.Now().Unix())
+			return fs.OK
+		}
 		return fs.ToErrno(os.ErrPermission)
 	}
 	// log.Info("node Getattr: path=", n.Path(), ", f=", f)

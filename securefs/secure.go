@@ -6,17 +6,52 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"encoding/binary"
+	"errors"
 	"os"
-
-	ps "github.com/mitchellh/go-ps"
-	log "github.com/sirupsen/logrus"
+	"sync"
+	"time"
 
 	"strongbox/configuration"
+	cfg "strongbox/configuration"
+
+	ps "github.com/mitchellh/go-ps"
 
 	"github.com/hanwen/go-fuse/v2/fuse"
+	log "github.com/sirupsen/logrus"
 )
 
 var builtInProcess []string = []string{"mount_macfuse", "strongbox"}
+
+var processes []ps.Process = []ps.Process{}
+var processesUpdateTime time.Time = time.Unix(0, 0)
+var processLock sync.Mutex
+
+func inProcess(pid int) (ps.Process, error) {
+	for _, p := range processes {
+		if p.Pid() == pid {
+			return p, nil
+		}
+	}
+	return nil, errors.New("Pid Not Found")
+}
+
+func tryUpdateProcess() {
+	now := time.Now()
+	var err error
+	var interval = time.Duration(cfg.Cfg.UpdateProcessDuration) * time.Second
+	if now.After(processesUpdateTime.Add(interval)) {
+		log.Warn("call ps.Processes() ")
+		if processLock.TryLock() {
+			defer processLock.Unlock()
+			processes, err = ps.Processes()
+			if err != nil {
+				log.Debug("process error:", err)
+				return
+			}
+			processesUpdateTime = now
+		}
+	}
+}
 
 func CheckAllowProcess(action string, ctx context.Context) bool {
 	caller, ok := fuse.FromContext(ctx)
@@ -28,26 +63,26 @@ func CheckAllowProcess(action string, ctx context.Context) bool {
 		return true
 	}
 
-	process, err := ps.FindProcess(int(caller.Pid))
+	tryUpdateProcess()
+
+	ps, err := inProcess(int(caller.Pid))
 	if err != nil {
-		log.Debug(action, " process error:", caller.Pid, " ", err)
+		log.Warn(action, " process not found forbid:", caller.Pid)
 		return false
-	} else {
-		// log.Debug(action, " process:", caller.Pid, " ", process.Executable())
 	}
 
 	for _, v := range builtInProcess {
-		if process.Executable() == v {
+		if ps.Executable() == v {
 			return true
 		}
 	}
 	for _, v := range configuration.Cfg.AllowProcess {
-		if process.Executable() == v {
+		if ps.Executable() == v {
 			return true
 		}
 	}
 
-	log.Warn(action, " process forbid:", caller.Pid, " ", process.Executable())
+	log.Warn(action, " process forbid:", caller.Pid, " ", ps.Executable())
 	return false
 }
 
