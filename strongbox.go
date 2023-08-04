@@ -58,11 +58,11 @@ func main() {
 		Compress:   false, // disabled by default
 	}
 	// TODO logger select
-	if false {
+	if true {
 		log.SetOutput(logger)
 	}
 	// log.SetLevel(log.DebugLevel)
-	log.SetLevel(log.InfoLevel)
+	log.SetLevel(log.DebugLevel)
 	log.SetFormatter(&nested.Formatter{
 		TimestampFormat: "2006-01-02 15:04:05",
 		HideKeys:        true,
