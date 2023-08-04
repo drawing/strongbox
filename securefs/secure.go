@@ -6,54 +6,28 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"encoding/binary"
-	"errors"
 	"os"
-	"sync"
-	"time"
+
+	lru "github.com/hashicorp/golang-lru/v2"
+	"github.com/shirou/gopsutil/v3/process"
 
 	"strongbox/configuration"
 	cfg "strongbox/configuration"
-
-	ps "github.com/mitchellh/go-ps"
 
 	"github.com/hanwen/go-fuse/v2/fuse"
 	log "github.com/sirupsen/logrus"
 )
 
+// /Library/Filesystems/macfuse.fs/Contents/Resources/mount_macfuse
 var builtInProcess []string = []string{"mount_macfuse", "strongbox"}
 
-var processes []ps.Process = []ps.Process{}
-var processesUpdateTime time.Time = time.Unix(0, 0)
-var processLock sync.Mutex
+const maxProcessCacheSize = 65535
 
-func inProcess(pid int) (ps.Process, error) {
-	for _, p := range processes {
-		if p.Pid() == pid {
-			return p, nil
-		}
-	}
-	return nil, errors.New("Pid Not Found")
-}
-
-func tryUpdateProcess() {
-	now := time.Now()
-	var err error
-	var interval = time.Duration(cfg.Cfg.UpdateProcessDuration) * time.Second
-	if now.After(processesUpdateTime.Add(interval)) {
-		log.Warn("call ps.Processes() ")
-		if processLock.TryLock() {
-			defer processLock.Unlock()
-			processes, err = ps.Processes()
-			if err != nil {
-				log.Debug("process error:", err)
-				return
-			}
-			processesUpdateTime = now
-		}
-	}
-}
-
+var processCache *lru.Cache[uint32, *process.Process] = nil
+ 
 func CheckAllowProcess(action string, ctx context.Context) bool {
+	var err error
+
 	caller, ok := fuse.FromContext(ctx)
 	if !ok {
 		log.Error(action, " FromContext error")
@@ -63,26 +37,47 @@ func CheckAllowProcess(action string, ctx context.Context) bool {
 		return true
 	}
 
-	tryUpdateProcess()
+	if processCache == nil {
+		processCache, err = lru.New[uint32, *process.Process](maxProcessCacheSize)
+		if err != nil {
+			log.Error(action, " lru.New error:", err)
+			return false
+		}
+	}
+	ps, ok := processCache.Get(caller.Pid)
+	if ok {
+		running, err := ps.IsRunning()
+		if !running || err != nil {
+			processCache.Remove(caller.Pid)
+			ok = false
+		}
+	}
+	if !ok {
+		ps, err = process.NewProcess(int32(caller.Pid))
+		if err != nil {
+			log.Error(action, " process.NewProcess error:", err)
+			return false
+		}
+		processCache.Add(caller.Pid, ps)
+	}
 
-	ps, err := inProcess(int(caller.Pid))
+	exeFile, err := ps.Exe()
 	if err != nil {
-		log.Warn(action, " process not found forbid:", caller.Pid)
+		processCache.Remove(caller.Pid)
 		return false
 	}
 
-	for _, v := range builtInProcess {
-		if ps.Executable() == v {
-			return true
-		}
-	}
 	for _, v := range configuration.Cfg.AllowProcess {
-		if ps.Executable() == v {
+		if exeFile == v {
 			return true
 		}
 	}
 
-	log.Warn(action, " process forbid:", caller.Pid, " ", ps.Executable())
+	if cfg.Cfg.WatchMode {
+		log.Warn(action, " process forbid(WatchMode):", caller.Pid, " ", exeFile, ", ", os.Getpid())
+		return true
+	}
+	log.Warn(action, " process forbid:", caller.Pid, " ", exeFile, ", ", os.Getpid())
 	return false
 }
 

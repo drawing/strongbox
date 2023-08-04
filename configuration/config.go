@@ -15,8 +15,8 @@ type Configuration struct {
 	MountPoint string `yaml:"mountPoint,omitempty"`
 	SecretPath string `yaml:"secretPath,omitempty"`
 
-	AllowProcess          []string `yaml:"allowProcess,omitempty"`
-	UpdateProcessDuration int      `yaml:"UpdateProcessDuration,omitempty"`
+	AllowProcess []string `yaml:"allowProcess,omitempty"`
+	WatchMode    bool     `yaml:"watchMode,omitempty"`
 
 	SecretKey []byte
 }
@@ -28,16 +28,14 @@ func (c *Configuration) Init(file string) error {
 		return err
 	}
 
+	c.WatchMode = false
+
 	err = yaml.Unmarshal(yamlConfig, c)
 	if err != nil {
 		log.Fatal("Unmarshal:", err)
 		return err
 	}
-	log.Debug(c)
-
-	if c.UpdateProcessDuration == 0 {
-		c.UpdateProcessDuration = 30
-	}
+	log.Error(c)
 
 	return nil
 }
