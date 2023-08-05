@@ -213,7 +213,7 @@ func (n *BoxInode) Path() string {
 // ------- fs api --------
 func (n *BoxInode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	n.Attr.GetToFuse(&out.Attr)
-	log.Debug("Getattr()", n.Path(), ", ", out.Attr.Mode)
+	// log.Debug("Getattr()", n.Path(), ", ", out.Attr.Mode)
 	return fs.OK
 }
 
@@ -303,7 +303,7 @@ func (n *BoxInode) Rename(ctx context.Context, name string, newParent fs.InodeEm
 }
 
 func (n *BoxInode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	log.Debug("Lookup()", name, ",", n.Name, "|", n.ChildrenNode)
+	// log.Debug("Lookup()", name, ",", n.Name, "|", n.ChildrenNode)
 
 	if n.ChildrenNode == nil {
 		return nil, fs.ToErrno(os.ErrNotExist)
@@ -316,7 +316,7 @@ func (n *BoxInode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) 
 			sa.Ino = v.Attr.Ino
 			v.Attr.GetToFuse(&out.Attr)
 
-			log.Debug("Lookup Attr()", v.Path(), ",", out.Attr.Mode, "|", v.Attr.Mode)
+			// log.Debug("Lookup Attr()", v.Path(), ",", out.Attr.Mode, "|", v.Attr.Mode)
 			b := n.Inode.NewInode(ctx, v, sa)
 			return b, fs.OK
 		}
@@ -324,13 +324,6 @@ func (n *BoxInode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) 
 
 	return nil, fs.ToErrno(os.ErrNotExist)
 }
-
-/*
-func (n *BoxInode) Opendir(ctx context.Context) syscall.Errno {
-	log.Debug("Opendir()")
-	return fs.OK
-}
-*/
 
 type DirEntryReader struct {
 	index int
@@ -426,13 +419,6 @@ func (n *BoxInode) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fu
 	return bfile, flags, fs.OK
 }
 
-/*
-func (n *BoxInode) Read(ctx context.Context, f fs.FileHandle, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
-	log.Debug("Node Read()", n.Name)
-	return nil, fs.ToErrno(os.ErrInvalid)
-}
-*/
-
 // ==============================================================================================
 
 type BoxFile struct {
@@ -442,20 +428,19 @@ type BoxFile struct {
 
 func (f *BoxFile) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
 	// TODO read cache
-	log.Debug("Read()", f.inode.Name, ", ", len(f.data))
+	log.Debug("Read()", f.inode.Name, ", ", len(f.data), "|", off, "|", len(dest))
 
-	start := 0
 	end := 0
 	data := []byte("")
 	if off < int64(len(f.data)) {
-		end = int(off) + len(f.data)
+		end = int(off) + len(dest)
 		if end > len(f.data) {
 			end = len(f.data)
 		}
-		data = f.data[start:end]
+		data = f.data[off:end]
 	}
 
-	log.Debug("Read()", string(data))
+	log.Debug("Read()", len(data))
 	res := &readResult{data}
 
 	return res, fs.OK
@@ -491,186 +476,3 @@ func (f *BoxFile) Write(ctx context.Context, data []byte, off int64) (written ui
 	}
 	return uint32(len(data)), fs.OK
 }
-
-// ==============================================================================================
-/*
-func (n *BoxInode) IsDir() bool {
-	log.Error("IsDir()", n.Name, ", ", n.Attr.Mode&syscall.S_IFDIR != 0)
-
-	return n.Attr.Mode&syscall.S_IFDIR != 0
-}
-*/
-/*
-// StableAttr returns the (Ino, Gen) tuple for this node.
-func (n *BoxInode) StableAttr() fs.StableAttr {
-	log.Error("StableAttr()")
-	return fs.StableAttr{}
-}
-
-// Mode returns the filetype
-func (n *BoxInode) Mode() uint32 {
-	log.Error("Mode()")
-	return 0755
-}
-
-// Returns the root of the tree
-func (n *BoxInode) Root() *fs.Inode {
-	log.Error("Root()")
-	return nil
-}
-
-// Returns whether this is the root of the tree
-func (n *BoxInode) IsRoot() bool {
-	log.Error("IsRoot()")
-	return true
-}
-
-// Forgotten returns true if the kernel holds no references to this
-// inode.  This can be used for background cleanup tasks, since the
-// kernel has no way of reviving forgotten nodes by its own
-// initiative.
-func (n *BoxInode) Forgotten() bool {
-	log.Error("Forgotten()")
-	return false
-}
-
-// Operations returns the object implementing the file system
-// operations.
-func (n *BoxInode) Operations() fs.InodeEmbedder {
-	log.Error("Operations()")
-	return nil
-}
-
-// NewPersistentInode returns an Inode whose lifetime is not in
-// control of the kernel.
-//
-// When the kernel is short on memory, it will forget cached file
-// system information (directory entries and inode metadata). This is
-// announced with FORGET messages.  There are no guarantees if or when
-// this happens. When it happens, these are handled transparently by
-// go-fuse: all Inodes created with NewInode are released
-// automatically. NewPersistentInode creates inodes that go-fuse keeps
-// in memory, even if the kernel is not interested in them. This is
-// convenient for building static trees up-front.
-func (n *BoxInode) NewPersistentInode(ctx context.Context, node fs.InodeEmbedder, id fs.StableAttr) *fs.Inode {
-	log.Error("NewPersistentInode()")
-	return n.newInode(ctx, node, id, true)
-}
-
-// ForgetPersistent manually marks the node as no longer important. If
-// it has no children, and if the kernel as no references, the nodes
-// gets removed from the tree.
-func (n *BoxInode) ForgetPersistent() {
-	log.Error("ForgetPersistent()")
-}
-
-// NewInode returns an inode for the given InodeEmbedder. The mode
-// should be standard mode argument (eg. S_IFDIR). The inode number in
-// id.Ino argument is used to implement hard-links.  If it is given,
-// and another node with the same ID is known, the new inode may be
-// ignored, and the old one used instead.
-func (n *BoxInode) NewInode(ctx context.Context, node fs.InodeEmbedder, id fs.StableAttr) *fs.Inode {
-	log.Error("NewInode()")
-	return n.newInode(ctx, node, id, false)
-}
-
-func (n *BoxInode) newInode(ctx context.Context, ops fs.InodeEmbedder, id fs.StableAttr, persistent bool) *fs.Inode {
-	log.Error("newInode()")
-	return nil
-}
-
-// GetChild returns a child node with the given name, or nil if the
-// directory has no child by that name.
-func (n *BoxInode) GetChild(name string) *fs.Inode {
-	log.Error("GetChild()")
-	return nil
-}
-
-// AddChild adds a child to this node. If overwrite is false, fail if
-// the destination already exists.
-func (n *BoxInode) AddChild(name string, ch *fs.Inode, overwrite bool) (success bool) {
-	log.Error("AddChild()")
-	return false
-}
-
-// Children returns the list of children of this directory Inode.
-func (n *BoxInode) Children() map[string]*fs.Inode {
-	log.Error("Children()")
-	return nil
-}
-
-// Parents returns a parent of this Inode, or nil if this Inode is
-// deleted or is the root
-func (n *BoxInode) Parent() (string, *fs.Inode) {
-	log.Error("Parent()")
-	return "", nil
-}
-
-// RmAllChildren recursively drops a tree, forgetting all persistent
-// nodes.
-func (n *BoxInode) RmAllChildren() {
-	log.Debug("RmAllChildren()")
-}
-
-// RmChild removes multiple children.  Returns whether the removal
-// succeeded and whether the node is still live afterward. The removal
-// is transactional: it only succeeds if all names are children, and
-// if they all were removed successfully.  If the removal was
-// successful, and there are no children left, the node may be removed
-// from the FS tree. In that case, RmChild returns live==false.
-func (n *BoxInode) RmChild(names ...string) (success, live bool) {
-	log.Error("RmChild()")
-	return false, false
-}
-
-// MvChild executes a rename. If overwrite is set, a child at the
-// destination will be overwritten, should it exist. It returns false
-// if 'overwrite' is false, and the destination exists.
-func (n *BoxInode) MvChild(old string, newParent *fs.Inode, newName string, overwrite bool) bool {
-	log.Error("MvChild()")
-	return false
-}
-
-// ExchangeChild swaps the entries at (n, oldName) and (newParent,
-// newName).
-func (n *BoxInode) ExchangeChild(oldName string, newParent *fs.Inode, newName string) {
-	log.Error("ExchangeChild()")
-}
-
-// NotifyEntry notifies the kernel that data for a (directory, name)
-// tuple should be invalidated. On next access, a LOOKUP operation
-// will be started.
-func (n *BoxInode) NotifyEntry(name string) syscall.Errno {
-	log.Error("NotifyEntry()")
-	return fs.ToErrno(os.ErrPermission)
-}
-
-// NotifyDelete notifies the kernel that the given inode was removed
-// from this directory as entry under the given name. It is equivalent
-// to NotifyEntry, but also sends an event to inotify watchers.
-func (n *BoxInode) NotifyDelete(name string, child *fs.Inode) syscall.Errno {
-	log.Error("NotifyDelete()")
-	// XXX arg ordering?
-	return fs.ToErrno(os.ErrPermission)
-}
-
-// NotifyContent notifies the kernel that content under the given
-// inode should be flushed from buffers.
-func (n *BoxInode) NotifyContent(off, sz int64) syscall.Errno {
-	log.Error("NotifyContent()")
-	// XXX how does this work for directories?
-	return fs.ToErrno(os.ErrPermission)
-}
-
-// WriteCache stores data in the kernel cache.
-func (n *BoxInode) WriteCache(offset int64, data []byte) syscall.Errno {
-	log.Error("WriteCache()")
-	return fs.ToErrno(os.ErrPermission)
-}
-
-// ReadCache reads data from the kernel cache.
-func (n *BoxInode) ReadCache(offset int64, dest []byte) (count int, errno syscall.Errno) {
-	log.Error("ReadCache()")
-	return 0, fs.ToErrno(os.ErrPermission)
-}
-*/
