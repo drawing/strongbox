@@ -53,6 +53,23 @@ func (db *BadgerDB) Set(key []byte, value []byte) error {
 	return nil
 }
 
+func (db *BadgerDB) Del(key []byte) error {
+	txn := db.badger.NewTransaction(true)
+	defer txn.Discard()
+
+	err := txn.Delete(key)
+	if err != nil {
+		log.Error("badger set error:", err)
+		return err
+	}
+
+	if err := txn.Commit(); err != nil {
+		log.Error("badger commit error:", err)
+	}
+
+	return nil
+}
+
 func (db *BadgerDB) Get(key []byte) ([]byte, error) {
 	txn := db.badger.NewTransaction(false)
 	item, err := txn.Get(key)
