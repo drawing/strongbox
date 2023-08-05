@@ -112,19 +112,18 @@ func PKCS7Padding(ciphertext []byte, blockSize int) []byte {
 	padding := (blockSize - len(ciphertext)%blockSize)
 	padtext := bytes.Repeat([]byte{byte(padding)}, padding)
 
-	// log.Debug("padding:", padding)
 	return append(ciphertext, padtext...)
 }
 
 func PKCS7UnPadding(origData []byte) []byte {
 	length := len(origData)
 	unpadding := int(origData[length-1])
+
 	if unpadding > len(origData) {
 		log.Error("unpadding too large:", unpadding)
 		return origData
 	}
 
-	// log.Debug("unpadding:", unpadding)
 	return origData[:(length - unpadding)]
 }
 
@@ -133,11 +132,14 @@ func AESEncrypt(plaintext []byte, key, iv []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	blockSize := block.BlockSize()
 	plaintext = PKCS7Padding(plaintext, blockSize)
 	blockMode := cipher.NewCBCEncrypter(block, iv)
 	crypted := make([]byte, len(plaintext))
+
 	blockMode.CryptBlocks(crypted, plaintext)
+
 	return crypted, nil
 }
 
@@ -146,13 +148,16 @@ func AESDecrypt(ciphertext []byte, key, iv []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	blockSize := block.BlockSize()
 	if len(ciphertext)%block.BlockSize() != 0 {
 		return nil, os.ErrInvalid
 	}
+
 	blockMode := cipher.NewCBCDecrypter(block, iv[:blockSize])
 	origData := make([]byte, len(ciphertext))
 	blockMode.CryptBlocks(origData, ciphertext)
+
 	origData = PKCS7UnPadding(origData)
 
 	return origData, nil
@@ -166,10 +171,8 @@ func intToBytes(n int) []byte {
 }
 
 func bytesToInt(b []byte) int {
-	bytesBuffer := bytes.NewBuffer(b)
-
 	var x int32
+	bytesBuffer := bytes.NewBuffer(b)
 	binary.Read(bytesBuffer, binary.BigEndian, &x)
-
 	return int(x)
 }

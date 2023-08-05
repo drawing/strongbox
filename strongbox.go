@@ -36,6 +36,7 @@ func credentials() (string, error) {
 
 func main() {
 	debug := flag.Bool("debug", false, "print debugging messages.")
+	configFile := flag.String("config", "config.yml", "config file.")
 	flag.Parse()
 
 	passwd, err := credentials()
@@ -44,7 +45,7 @@ func main() {
 		log.Fatal("must set password")
 	}
 
-	err = config.Cfg.Init("config.yml")
+	err = config.Cfg.Init(*configFile)
 	if err != nil {
 		log.Fatal("read config failed:", err)
 	}
@@ -58,7 +59,7 @@ func main() {
 		Compress:   false, // disabled by default
 	}
 	// TODO logger select
-	if true {
+	if false {
 		log.SetOutput(logger)
 	}
 	// log.SetLevel(log.DebugLevel)
@@ -98,10 +99,17 @@ func main() {
 
 		server.Serve()
 	*/
+
 	loopbackRoot, err := securefs.NewSecureLoopbackRoot(secretPath)
 	if err != nil {
 		log.Fatalf("NewLoopbackRoot(%s): %v", secretPath, err)
 	}
+
+	/*
+		loopbackRoot, err := securefs.NewRootBoxInode()
+		if err != nil {
+			log.Fatalf("NewRootBoxInode(%s): %v", secretPath, err)
+		}*/
 
 	sec := time.Second
 	opts := &fs.Options{

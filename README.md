@@ -1,20 +1,61 @@
 # strongbox
-This program is used to keep files safe
 
-# TODO
+## Introduction
 
-- [ ] 文件系统实现
-  - [x] 加密文件
-  - [x] 文件存储结构 lookback
-- [ ] 进程白名单访问
-  - [x] 通过进程获取 id 名字
-  - [ ] vscode 访问文件时，当获取进程名时会卡死
-- [x] fake返回
-- [ ] 测试用例
-- [ ] 介绍文档
-- [ ] 异常分支
-- [x] 信号捕捉，停进程 umount 挂载点
-- [x] 配置系统 yaml
-- [ ] 日志
-  - [x] 日志系统 (sirupsen/logrus & lumberjack.v2)
-  - [ ] 日志格式化
+strongbox is used to keep files safe, When the system reads and writes files, strongbox captures the event through the fuse callback, judges the permission of the read and write process, and encrypts and decrypts the read and write persistent storage to ensure file security.
+
+## Capability
+
+* Manage read and write directory/file permissions through process whitelist
+* Encrypt local persistent files
+
+## Architecture
+
+```mermaid
+graph TD
+    user(User/Program)
+    filesystem(Linux/Mac/Windows 's Filesystem)
+    fuse(Fuse Filesystem)
+    subgraph strongbox
+        access(Program Access Control)
+        encrypt(Encrypted File Content)
+        fs(Persistent Storage)
+        access --> encrypt
+        encrypt --> fs
+    end
+    user -->|manage files| filesystem
+    filesystem --> fuse
+    fuse -->|callback| strongbox
+```
+
+## Usage
+
+Start by command
+
+```shell
+Usage of ./strongbox:
+  -config string
+        config file. (default "config.yml")
+
+Exmaple:
+    strongbox -config ./config.yml
+```
+
+config file description
+
+```yaml
+# target file path
+mountPoint: /tmp/w1
+# encrypted persistent storage path
+secretPath: /tmp/w2
+# process whitelist, full binary path
+allowProcess:
+  - "/usr/local/Cellar/git/2.29.2/bin/git"
+  - "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
+# watchMode=true only prints interception information, does not perform interception operations
+watchMode: false
+```
+
+To start the process, you need to enter a password.
+
+After completion, only the whitelist process can operate the files and directories in `/tmp/w1`, and other processes have no permission to access. And the files in this directory are encrypted then saved to `/tmp/w2`, so there is no need to worry about the risk of leakage.

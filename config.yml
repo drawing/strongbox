@@ -1,8 +1,8 @@
-mountPoint: /Users/bodeng/workspace/drawing/strongbox/temp/w1
+mountPoint: /tmp/w1
 secretPath: /tmp/w2
 allowProcess:
   - "/usr/local/Cellar/git/2.29.2/bin/git"
   - "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
   - "/Applications/Typora.app/Contents/MacOS/Typora"
-  - "/bin/ls"
+  - "/bin/zsh"
 watchMode: false
