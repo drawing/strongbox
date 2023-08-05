@@ -131,6 +131,7 @@ func (r *readResult) Size() int {
 }
 
 func (r *readResult) Done() {
+	r.content = []byte("")
 }
 
 func (f *loopbackFile) Read(ctx context.Context, buf []byte, off int64) (res fuse.ReadResult, errno syscall.Errno) {

@@ -1,5 +1,5 @@
 mountPoint: /tmp/w1
-secretPath: /tmp/w2
+secretPath: /tmp/w2/i.db
 allowProcess:
   - "/usr/local/Cellar/git/2.29.2/bin/git"
   - "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"

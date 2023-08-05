@@ -1,7 +1,9 @@
 package securefs
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"fmt"
 	"os"
 	"syscall"
@@ -15,25 +17,38 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+func init() {
+	gob.Register(BoxInode{})
+}
+
 func NewRootBoxInode() (*BoxInode, error) {
 	n := &BoxInode{}
 
-	var out fuse.EntryOut
+	err := LoadRootDirFromDB(n)
+	log.Info("Load Root:", err)
 
-	out.Mode = 0755 | syscall.S_IFDIR
+	if err == os.ErrNotExist {
+		var out fuse.EntryOut
 
-	fd, err := syscall.Open(cfg.Cfg.MountPoint, os.O_RDONLY, 0)
-	if err == nil {
-		st := syscall.Stat_t{}
-		if err := syscall.Fstat(fd, &st); err == nil {
-			out.FromStat(&st)
+		out.Mode = 0755 | syscall.S_IFDIR
+
+		fd, err := syscall.Open(cfg.Cfg.MountPoint, os.O_RDONLY, 0)
+		if err == nil {
+			st := syscall.Stat_t{}
+			if err := syscall.Fstat(fd, &st); err == nil {
+				out.FromStat(&st)
+			}
+			syscall.Close(fd)
 		}
-		syscall.Close(fd)
-	}
 
-	n.Name = ""
-	n.root = n
-	n.Attr.SetFromFuse(&out.Attr)
+		n.Name = ""
+		n.root = n
+		n.Attr.SetFromFuse(&out.Attr)
+		return n, nil
+	}
+	if err != nil {
+		return nil, err
+	}
 	return n, nil
 }
 
@@ -72,10 +87,16 @@ func (a *BoxAttr) SetFromFuse(out *fuse.Attr) {
 	a.Gid = out.Gid
 }
 func (a *BoxAttr) SetFromAttrIn(in *fuse.SetAttrIn) {
-	a.Size = in.Size
-	a.Atime = time.Unix(int64(in.Atime), int64(in.Atimensec))
-	a.Mtime = time.Unix(int64(in.Mtime), int64(in.Mtimensec))
-	a.Ctime = time.Unix(int64(in.Ctime), int64(in.Ctimensec))
+	if in.Size > 0 {
+		a.Size = in.Size
+	}
+	if in.Atime > 0 {
+		a.Atime = time.Unix(int64(in.Atime), int64(in.Atimensec))
+	}
+	if in.Mtime > 0 {
+		a.Mtime = time.Unix(int64(in.Mtime), int64(in.Mtimensec))
+	}
+	// a.Ctime = time.Unix(int64(in.Ctime), int64(in.Ctimensec))
 	a.Mode = in.Mode
 	a.Uid = in.Uid
 	a.Gid = in.Gid
@@ -129,15 +150,94 @@ func (n *BoxInode) RenameChildNode(src string, dst string) error {
 	return nil
 }
 
+func (n *BoxInode) UpdateToDB() error {
+	var network bytes.Buffer
+	enc := gob.NewEncoder(&network)
+	err := enc.Encode(n.root)
+	if err != nil {
+		log.Error("gob encode error:", err)
+		return err
+	}
+
+	err = GetDBInstance().Set([]byte("-"), network.Bytes())
+	if err != nil {
+		log.Error("root dir set error:", err)
+		return err
+	}
+
+	return nil
+}
+
+func setParentNode(b *BoxInode, parent *BoxInode, root *BoxInode) {
+	b.root = root
+	b.parent = parent
+
+	if b.ChildrenNode != nil {
+		for _, v := range b.ChildrenNode {
+			setParentNode(v, b, root)
+		}
+	}
+}
+
+func LoadRootDirFromDB(b *BoxInode) error {
+	data, err := GetDBInstance().Get([]byte("-"))
+	if err != nil {
+		log.Error("root dir set error:", err)
+		return err
+	}
+	if len(data) == 0 {
+		return os.ErrNotExist
+	}
+
+	var network bytes.Buffer
+	_, err = network.Write(data)
+	if err != nil {
+		return err
+	}
+
+	dec := gob.NewDecoder(&network)
+	err = dec.Decode(b)
+	if err != nil {
+		return err
+	}
+
+	b.root = b
+	if b.ChildrenNode != nil {
+		for _, v := range b.ChildrenNode {
+			setParentNode(v, b, b)
+		}
+	}
+
+	return nil
+}
+
+func (n *BoxInode) Path() string {
+	var c *BoxInode = n
+	path := c.Name
+	c = c.parent
+	for c != nil {
+		path = c.Name + "/" + path
+		c = c.parent
+	}
+	return path
+}
+
+// / ------- fs api --------
 func (n *BoxInode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
-	log.Debug("Getattr()", n.Name)
 	n.Attr.GetToFuse(&out.Attr)
+	// log.Debug("Getattr()", n.Path(), ", ", out.Attr.Size)
 	return fs.OK
 }
+
 func (n *BoxInode) Setattr(ctx context.Context, f fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
-	log.Debug("Setattr()", n.Name)
-	n.Attr.SetFromAttrIn(in)
+	log.Debug("Setattr()", n.Path(), ", ", in, ", ", out, ", ", in.Valid)
+	// TODO
+	// n.Attr.SetFromAttrIn(in)
 	n.Attr.GetToFuse(&out.Attr)
+	err := n.UpdateToDB()
+	if err != nil {
+		return fs.ToErrno(os.ErrInvalid)
+	}
 	return fs.OK
 }
 
@@ -166,12 +266,21 @@ func (n *BoxInode) Mkdir(ctx context.Context, name string, mode uint32, out *fus
 
 	box.Attr.GetToFuse(&out.Attr)
 
+	err := n.UpdateToDB()
+	if err != nil {
+		return nil, fs.ToErrno(os.ErrInvalid)
+	}
 	return b, fs.OK
 }
 
 func (n *BoxInode) Rmdir(ctx context.Context, name string) syscall.Errno {
 	log.Debug("Rmdir()", name, ", ", n.Name)
 	n.DelChildNode(name)
+
+	err := n.UpdateToDB()
+	if err != nil {
+		return fs.ToErrno(os.ErrInvalid)
+	}
 	return fs.OK
 }
 
@@ -180,6 +289,14 @@ func (n *BoxInode) Rename(ctx context.Context, name string, newParent fs.InodeEm
 	log.Debug("Rename 1 ()", newParent)
 	log.Debug("Rename 2 ()", n)
 	err := n.RenameChildNode(name, newName)
+	if err != nil {
+		return fs.ToErrno(err)
+	}
+	err = n.UpdateToDB()
+	if err != nil {
+		return fs.ToErrno(os.ErrInvalid)
+	}
+
 	return fs.ToErrno(err)
 }
 
@@ -221,7 +338,7 @@ func (d *DirEntryReader) Close() {
 }
 
 func (n *BoxInode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
-	log.Debug("Readdir()", n.Name, ", ", len(n.ChildrenNode))
+	// log.Debug("Readdir()", n.Name, ", ", len(n.ChildrenNode))
 	r := DirEntryReader{}
 	for _, v := range n.ChildrenNode {
 		dir := fuse.DirEntry{}
@@ -239,7 +356,7 @@ func (n *BoxInode) String() string {
 }
 
 func (n *BoxInode) Create(ctx context.Context, name string, flags uint32, mode uint32, out *fuse.EntryOut) (node *fs.Inode, fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
-	log.Debug("Create()", n.Name, ", ", len(n.ChildrenNode))
+	// log.Debug("Create()", n.Name, ", ", len(n.ChildrenNode))
 	// TODO flags
 
 	caller, ok := fuse.FromContext(ctx)
@@ -265,32 +382,96 @@ func (n *BoxInode) Create(ctx context.Context, name string, flags uint32, mode u
 	box.Attr.GetToFuse(&out.Attr)
 
 	bfile := &BoxFile{}
-	bfile.inode = n
+	bfile.inode = box
+	bfile.data = []byte("")
+
+	err := n.UpdateToDB()
+	if err != nil {
+		return nil, nil, 0, fs.ToErrno(os.ErrInvalid)
+	}
 	return b, bfile, 0, fs.OK
 }
 
 func (n *BoxInode) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
 	// TODO flags
-	log.Debug("Open()", n.Name)
+	// log.Debug("Open()", n.Name, ", ", n)
 	bfile := &BoxFile{}
 	bfile.inode = n
-	return bfile, 0, fs.OK
+
+	data, err := GetDBInstance().Get([]byte(n.Path()))
+	if err != nil {
+		log.Error("Read DB failed:", err)
+		return 0, 0, fs.ToErrno(os.ErrInvalid)
+	}
+
+	bfile.data = data
+
+	return bfile, flags, fs.OK
 }
+
+/*
+func (n *BoxInode) Read(ctx context.Context, f fs.FileHandle, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
+	log.Debug("Node Read()", n.Name)
+	return nil, fs.ToErrno(os.ErrInvalid)
+}
+*/
 
 // ==============================================================================================
 
 type BoxFile struct {
 	inode *BoxInode
+	data  []byte
 }
 
 func (f *BoxFile) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
-	log.Debug("Read()", f.inode.Name)
-	res := &readResult{[]byte("this is test data")}
+	// TODO read cache
+	// log.Debug("Read()", f.inode.Name, ", ", len(f.data))
+
+	start := 0
+	end := 0
+	data := []byte("")
+	if off < int64(len(f.data)) {
+		end = int(off) + len(f.data)
+		if end > len(f.data) {
+			end = len(f.data)
+		}
+		data = f.data[start:end]
+	}
+
+	log.Debug("Read()", string(data))
+	res := &readResult{data}
+
 	return res, fs.OK
 }
 
 func (f *BoxFile) Write(ctx context.Context, data []byte, off int64) (written uint32, errno syscall.Errno) {
-	log.Debug("Write()", f.inode.Name)
+	// log.Debug("Write()", f.inode.Name)
+
+	if int64(len(f.data)) < off {
+		log.Errorf("Write: plain(%d) < off(%d)", len(f.data), off)
+		return 0, fs.ToErrno(os.ErrInvalid)
+	}
+
+	if off+int64(len(data)) > int64(len(f.data)) {
+		f.data = append(f.data[0:off], data...)
+	} else {
+		for i := 0; i < len(data); i++ {
+			f.data[off+int64(i)] = data[i]
+		}
+	}
+
+	// TODO Transaction
+	err := GetDBInstance().Set([]byte(f.inode.Path()), f.data)
+	if err != nil {
+		log.Error("Write DB failed:", err)
+		return 0, fs.ToErrno(os.ErrInvalid)
+	}
+
+	f.inode.Attr.Size = uint64(len(f.data))
+	err = f.inode.UpdateToDB()
+	if err != nil {
+		return uint32(len(data)), fs.ToErrno(err)
+	}
 	return uint32(len(data)), fs.OK
 }
 
@@ -339,16 +520,6 @@ func (n *BoxInode) Forgotten() bool {
 func (n *BoxInode) Operations() fs.InodeEmbedder {
 	log.Error("Operations()")
 	return nil
-}
-
-// Path returns a path string to the inode relative to `root`.
-// Pass nil to walk the hierarchy as far up as possible.
-//
-// If you set `root`, Path() warns if it finds an orphaned Inode, i.e.
-// if it does not end up at `root` after walking the hierarchy.
-func (n *BoxInode) Path(root *fs.Inode) string {
-	log.Error("Path()")
-	return "/"
 }
 
 // NewPersistentInode returns an Inode whose lifetime is not in

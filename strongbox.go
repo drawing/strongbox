@@ -51,6 +51,11 @@ func main() {
 	}
 	config.Cfg.SetPasswd(passwd)
 
+	err = securefs.GetDBInstance().InitDB()
+	if err != nil {
+		log.Fatal("init db failed:", err)
+	}
+
 	logger := &lumberjack.Logger{
 		Filename:   "logs/box.log",
 		MaxSize:    10, // MB
@@ -99,17 +104,16 @@ func main() {
 
 		server.Serve()
 	*/
-
-	loopbackRoot, err := securefs.NewSecureLoopbackRoot(secretPath)
-	if err != nil {
-		log.Fatalf("NewLoopbackRoot(%s): %v", secretPath, err)
-	}
-
 	/*
-		loopbackRoot, err := securefs.NewRootBoxInode()
+		loopbackRoot, err := securefs.NewSecureLoopbackRoot(secretPath)
 		if err != nil {
-			log.Fatalf("NewRootBoxInode(%s): %v", secretPath, err)
-		}*/
+			log.Fatalf("NewLoopbackRoot(%s): %v", secretPath, err)
+		}
+	*/
+	loopbackRoot, err := securefs.NewRootBoxInode()
+	if err != nil {
+		log.Fatalf("NewRootBoxInode(%s): %v", secretPath, err)
+	}
 
 	sec := time.Second
 	opts := &fs.Options{
@@ -138,6 +142,7 @@ func main() {
 		<-c
 		log.Info("Unmount: ", mountPoint)
 		server.Unmount()
+		securefs.GetDBInstance().Close()
 	}()
 
 	server.Wait()
