@@ -231,7 +231,7 @@ func (n *BoxInode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.Attr
 	// log.Debug("Getatt:", n.Path())
 
 	if n.Name != "" && !CheckAllowProcess("Getattr", ctx) {
-		return fs.ToErrno(os.ErrNotExist)
+		return fs.ToErrno(os.ErrPermission)
 	}
 
 	n.Attr.GetToFuse(&out.Attr)
@@ -243,11 +243,7 @@ func (n *BoxInode) Setattr(ctx context.Context, f fs.FileHandle, in *fuse.SetAtt
 	log.Debug("Setattr:", n.Path())
 
 	if !CheckAllowProcess("Setattr", ctx) {
-		if n.Name == "" {
-			return fs.ToErrno(os.ErrPermission)
-		} else {
-			return fs.ToErrno(os.ErrNotExist)
-		}
+		return fs.ToErrno(os.ErrPermission)
 	}
 
 	n.Attr.SetFromAttrIn(in)
@@ -277,7 +273,7 @@ func (n *BoxInode) Setattr(ctx context.Context, f fs.FileHandle, in *fuse.SetAtt
 }
 
 func (n *BoxInode) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	log.Debug("Mkdir:", n.Path(), "/", name)
+	log.Debug("Mkdir:", n.Path(), "|", name)
 
 	if !CheckAllowProcess("Mkdir", ctx) {
 		return nil, fs.ToErrno(os.ErrPermission)
@@ -313,7 +309,7 @@ func (n *BoxInode) Mkdir(ctx context.Context, name string, mode uint32, out *fus
 }
 
 func (n *BoxInode) Rmdir(ctx context.Context, name string) syscall.Errno {
-	log.Debug("Rmdir:", n.Path(), "/", name)
+	log.Debug("Rmdir:", n.Path(), "|", name)
 
 	if !CheckAllowProcess("Rmdir", ctx) {
 		return fs.ToErrno(os.ErrPermission)
@@ -328,22 +324,24 @@ func (n *BoxInode) Rmdir(ctx context.Context, name string) syscall.Errno {
 	return fs.OK
 }
 func (n *BoxInode) Unlink(ctx context.Context, name string) syscall.Errno {
-	log.Debug("Unlink:", n.Path(), "/", name)
+	log.Debug("Unlink:", n.Path(), "|", name)
 
 	if !CheckAllowProcess("Unlink", ctx) {
 		return fs.ToErrno(os.ErrPermission)
 	}
 
-	isDir := n.IsDir()
-
 	// TODO:Transaction
+	node, err := n.GetChildNode(name)
+	if err != nil {
+		return fs.ToErrno(os.ErrNotExist)
+	}
 	n.DelChildNode(name)
-	err := n.UpdateToDB()
+	err = n.UpdateToDB()
 	if err != nil {
 		return fs.ToErrno(os.ErrInvalid)
 	}
-	if !isDir {
-		GetDBInstance().Del([]byte(n.Path()))
+	if !node.IsDir() {
+		GetDBInstance().Del([]byte(node.Path()))
 	}
 	return fs.OK
 }
@@ -402,7 +400,7 @@ func (n *BoxInode) Rename(ctx context.Context, name string, newParent fs.InodeEm
 }
 
 func (n *BoxInode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	log.Debug("Lookup:", n.Path(), "/", name)
+	log.Debug("Lookup:", n.Path(), "|", name)
 
 	if !CheckAllowProcess("Lookup", ctx) {
 		return nil, fs.ToErrno(os.ErrPermission)
@@ -445,7 +443,7 @@ func (n *BoxInode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 		dir.Name = v.Name
 		r.dirs = append(r.dirs, dir)
 	}
-	// log.Debug("Readdir() --- ", r)
+	log.Debug("Readdir: result:", r)
 	return &r, fs.OK
 }
 
@@ -454,7 +452,7 @@ func (n *BoxInode) String() string {
 }
 
 func (n *BoxInode) Create(ctx context.Context, name string, flags uint32, mode uint32, out *fuse.EntryOut) (node *fs.Inode, fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
-	log.Debug("Create:", n.Path(), "/", name)
+	log.Debug("Create:", n.Path(), "|", name)
 
 	if !CheckAllowProcess("Create", ctx) {
 		return nil, nil, 0, fs.ToErrno(os.ErrPermission)

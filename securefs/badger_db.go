@@ -20,19 +20,55 @@ func GetDBInstance() *BadgerDB {
 	return badgerInstance
 }
 
+func (db *BadgerDB) DebugKeys() {
+	txn := db.badger.NewTransaction(false)
+
+	opts := badger.DefaultIteratorOptions
+	opts.PrefetchSize = 10
+	it := txn.NewIterator(opts)
+
+	defer it.Close()
+
+	length := 0
+
+	for it.Rewind(); it.Valid(); it.Next() {
+		item := it.Item()
+		k := item.Key()
+		err := item.Value(func(v []byte) error {
+			log.Debugf("key=%s, valueLen=%d", k, len(v))
+			length += len(v)
+			return nil
+		})
+		if err != nil {
+			log.Debugf("iterator %s error:%s", k, err.Error())
+		}
+	}
+
+	log.Debugf("total length=%d", length)
+}
+
 func (db *BadgerDB) InitDB() error {
 	skey := cfg.Cfg.SecretKey
 	opt := badger.DefaultOptions(cfg.Cfg.SecretPath)
 	opt.EncryptionKey = skey
-	opt.BlockCacheSize = 100 << 20
+	opt.BlockCacheSize = 100 << 10
 	opt.IndexCacheSize = 100 << 20
+	// opt.VLogPercentile = 0.8
+
+	if cfg.Cfg.BackupInMemory {
+		opt = opt.WithInMemory(true)
+	}
 
 	var err error
 	db.badger, err = badger.Open(opt)
 	if err != nil {
 		log.Error("open db error:", err)
+		return err
 	}
 
+	// db.DebugKeys()
+	// db.badger.RunValueLogGC(0.5)
+	db.badger.Flatten(1)
 	return nil
 }
 

@@ -18,7 +18,8 @@ type Configuration struct {
 	AllowProcess []string `yaml:"allowProcess,omitempty"`
 	WatchMode    bool     `yaml:"watchMode,omitempty"`
 
-	SecretKey []byte
+	SecretKey      []byte
+	BackupInMemory bool
 }
 
 func (c *Configuration) Init(file string) error {

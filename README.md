@@ -58,4 +58,4 @@ watchMode: false
 
 To start the process, you need to enter a password.
 
-After completion, only the whitelist process can operate the files and directories in `/tmp/w1`, and other processes have no permission to access. And the files in this directory are encrypted then saved to `/tmp/w2`, so there is no need to worry about the risk of leakage.
+After completion, only the whitelist process can operate the files and directories in `/tmp/w1`, and other processes have no permission to access. And the files in this directory are encrypted then saved to `/tmp/w2/i.db`, so there is no need to worry about the risk of leakage.

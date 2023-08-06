@@ -66,7 +66,7 @@ func CheckAllowProcess(action string, ctx context.Context) bool {
 		log.Error(action, " FromContext error")
 		return false
 	}
-	log.Debug("Enter PID:", caller.Pid)
+	// log.Debug("Enter PID:", caller.Pid)
 
 	// 2023-08-04 23:46:53 [WARN] Getattr ----- new process start ----- 3102
 	if os.Getpid() == int(caller.Pid) || 0 == caller.Pid {
@@ -83,7 +83,7 @@ func CheckAllowProcess(action string, ctx context.Context) bool {
 	}
 	ps, ok := processCache.Get(caller.Pid)
 	if !ok || ps.uptime.After(time.Now().Add(30*time.Second)) {
-		log.Warn(action, " ----- new process start ----- ", caller.Pid)
+		// log.Warn(action, " ----- new process start ----- ", caller.Pid)
 		nps, err := process.NewProcess(int32(caller.Pid))
 		if err != nil {
 			log.Error(action, " process.NewProcess error:", err)
@@ -95,14 +95,14 @@ func CheckAllowProcess(action string, ctx context.Context) bool {
 			return false
 		}
 
-		log.Warn(action, " ----- new process end ----- ", caller.Pid, ", ", exeFile)
+		// log.Warn(action, " ----- new process end ----- ", caller.Pid, ", ", exeFile)
 		ps = &processItem{exeFile, time.Now()}
 		processCache.Add(caller.Pid, ps)
 	}
 
 	for _, v := range configuration.Cfg.AllowProcess {
 		if ps.exec == v {
-			log.Debug("Leave 2 PID:", caller.Pid)
+			// log.Debug("Leave 2 PID:", caller.Pid)
 			return true
 		}
 	}
@@ -111,7 +111,7 @@ func CheckAllowProcess(action string, ctx context.Context) bool {
 		log.Warn(action, " process forbid(WatchMode):", caller.Pid, " ", ps.exec, ", ", os.Getpid())
 		return true
 	}
-	log.Debug("Leave 3 PID:", caller.Pid)
+	// log.Debug("Leave 3 PID:", caller.Pid)
 	log.Warn(action, " process forbid:", caller.Pid, " ", ps.exec, ", ", os.Getpid())
 	return false
 }

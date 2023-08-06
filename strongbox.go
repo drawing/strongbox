@@ -18,8 +18,6 @@ import (
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 
-	// "github.com/hanwen/go-fuse/v2/fuse/nodefs"
-
 	nested "github.com/antonfisher/nested-logrus-formatter"
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/natefinch/lumberjack.v2"
@@ -81,11 +79,11 @@ func main() {
 		log.Fatal("init db failed:", err)
 	}
 
-	// TODO:mountPoint empty
+	// TODO: chek mountPoint empty
 	mountPoint := config.Cfg.MountPoint
 	secretPath := config.Cfg.SecretPath
 
-	loopbackRoot, err := securefs.NewRootBoxInode()
+	boxfsRoot, err := securefs.NewRootBoxInode()
 	if err != nil {
 		log.Fatalf("NewRootBoxInode(%s): %v", secretPath, err)
 	}
@@ -99,11 +97,11 @@ func main() {
 
 		MountOptions: fuse.MountOptions{
 			Debug: *debug,
-			// Name:              "loopback",
+			Name:  "strongbox",
 		},
 	}
 
-	server, err := fs.Mount(mountPoint, loopbackRoot, opts)
+	server, err := fs.Mount(mountPoint, boxfsRoot, opts)
 	if err != nil {
 		log.Fatalf("Mount fail: %v\n", err)
 	}
