@@ -35,7 +35,7 @@ func (c *Configuration) Init(file string) error {
 		log.Fatal("Unmarshal:", err)
 		return err
 	}
-	log.Error(c)
+	log.Info("Init Config:", c)
 
 	return nil
 }

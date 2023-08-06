@@ -78,38 +78,6 @@ func main() {
 	mountPoint := config.Cfg.MountPoint
 	secretPath := config.Cfg.SecretPath
 
-	/*
-		root := securefs.NewSecureNodeFSRoot(secretPath)
-		conn := nodefs.NewFileSystemConnector(root, nil)
-		server, err := fuse.NewServer(conn.RawFS(), mountPoint, &fuse.MountOptions{
-			Debug: *debug,
-		})
-		if err != nil {
-			log.Error("Mount fail: ", err)
-			os.Exit(1)
-		}
-		log.Print("Mounted: ", mountPoint)
-
-		c := make(chan os.Signal)
-		signal.Notify(c, syscall.SIGTERM, syscall.SIGINT)
-		go func() {
-			select {
-			case sig := <-c:
-				{
-					log.Infof("Got %s signal. Unmount...", sig)
-					server.Unmount()
-				}
-			}
-		}()
-
-		server.Serve()
-	*/
-	/*
-		loopbackRoot, err := securefs.NewSecureLoopbackRoot(secretPath)
-		if err != nil {
-			log.Fatalf("NewLoopbackRoot(%s): %v", secretPath, err)
-		}
-	*/
 	loopbackRoot, err := securefs.NewRootBoxInode()
 	if err != nil {
 		log.Fatalf("NewRootBoxInode(%s): %v", secretPath, err)
@@ -117,8 +85,6 @@ func main() {
 
 	sec := time.Second
 	opts := &fs.Options{
-		// The timeout options are to be compatible with libfuse defaults,
-		// making benchmarking easier.
 		AttrTimeout:  &sec,
 		EntryTimeout: &sec,
 

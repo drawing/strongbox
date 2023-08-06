@@ -4,9 +4,8 @@
 - [ ] 介绍文档
 - [ ] 文件系统实现
   - [x] 加密文件
-  - [x] 文件存储结构 lookback
-  - [ ] 文件存储，可选
-    - [badger](https://github.com/dgraph-io/badger)
+  - [x] ~~文件存储结构 lookback~~
+  - [x] 文件存储[badger](https://github.com/dgraph-io/badger)
 - [ ] 文件权限管控
   - [x] 通过进程获取 id 名字
   - [x] 进程白名单访问
@@ -25,4 +24,5 @@
 - [x] 配置系统 yaml
 - [ ] 日志
   - [x] 日志系统 (sirupsen/logrus & lumberjack.v2)
-  - [ ] 日志格式化
+  - [x] 日志格式化
+  - [ ] 日志等级/路径等可配置

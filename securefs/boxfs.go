@@ -226,15 +226,29 @@ func (n *BoxInode) Path() string {
 	return path
 }
 
-// ------- fs api --------
+// ------------------------- inode api -------------------------
 func (n *BoxInode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
-	n.Attr.GetToFuse(&out.Attr)
 	// log.Debug("Getatt:", n.Path())
+
+	if n.Name != "" && !CheckAllowProcess("Getattr", ctx) {
+		return fs.ToErrno(os.ErrNotExist)
+	}
+
+	n.Attr.GetToFuse(&out.Attr)
+
 	return fs.OK
 }
 
 func (n *BoxInode) Setattr(ctx context.Context, f fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
 	log.Debug("Setattr:", n.Path())
+
+	if !CheckAllowProcess("Setattr", ctx) {
+		if n.Name == "" {
+			return fs.ToErrno(os.ErrPermission)
+		} else {
+			return fs.ToErrno(os.ErrNotExist)
+		}
+	}
 
 	n.Attr.SetFromAttrIn(in)
 
@@ -264,6 +278,10 @@ func (n *BoxInode) Setattr(ctx context.Context, f fs.FileHandle, in *fuse.SetAtt
 
 func (n *BoxInode) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
 	log.Debug("Mkdir:", n.Path(), "/", name)
+
+	if !CheckAllowProcess("Mkdir", ctx) {
+		return nil, fs.ToErrno(os.ErrPermission)
+	}
 
 	caller, ok := fuse.FromContext(ctx)
 	if !ok {
@@ -296,6 +314,11 @@ func (n *BoxInode) Mkdir(ctx context.Context, name string, mode uint32, out *fus
 
 func (n *BoxInode) Rmdir(ctx context.Context, name string) syscall.Errno {
 	log.Debug("Rmdir:", n.Path(), "/", name)
+
+	if !CheckAllowProcess("Rmdir", ctx) {
+		return fs.ToErrno(os.ErrPermission)
+	}
+
 	n.DelChildNode(name)
 
 	err := n.UpdateToDB()
@@ -306,6 +329,11 @@ func (n *BoxInode) Rmdir(ctx context.Context, name string) syscall.Errno {
 }
 func (n *BoxInode) Unlink(ctx context.Context, name string) syscall.Errno {
 	log.Debug("Unlink:", n.Path(), "/", name)
+
+	if !CheckAllowProcess("Unlink", ctx) {
+		return fs.ToErrno(os.ErrPermission)
+	}
+
 	isDir := n.IsDir()
 
 	// TODO:Transaction
@@ -322,6 +350,11 @@ func (n *BoxInode) Unlink(ctx context.Context, name string) syscall.Errno {
 
 func (n *BoxInode) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string, flags uint32) syscall.Errno {
 	log.Debug("Rename:", name, "|", newName)
+
+	if !CheckAllowProcess("Rename", ctx) {
+		return fs.ToErrno(os.ErrPermission)
+	}
+
 	c, err := n.GetChildNode(name)
 	if err != nil {
 		log.Error("Rename: src not exist ", err)
@@ -371,6 +404,10 @@ func (n *BoxInode) Rename(ctx context.Context, name string, newParent fs.InodeEm
 func (n *BoxInode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
 	log.Debug("Lookup:", n.Path(), "/", name)
 
+	if !CheckAllowProcess("Lookup", ctx) {
+		return nil, fs.ToErrno(os.ErrPermission)
+	}
+
 	if n.ChildrenNode == nil {
 		log.Warn("Lookup: children not exist ", n.Path(), "/", name)
 		return nil, fs.ToErrno(os.ErrNotExist)
@@ -395,6 +432,11 @@ func (n *BoxInode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) 
 
 func (n *BoxInode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 	log.Debug("Readdir:", n.Path(), "|", len(n.ChildrenNode))
+
+	if !CheckAllowProcess("Readdir", ctx) {
+		return &DirEntryReader{}, fs.OK
+	}
+
 	r := DirEntryReader{}
 	for _, v := range n.ChildrenNode {
 		dir := fuse.DirEntry{}
@@ -413,8 +455,12 @@ func (n *BoxInode) String() string {
 
 func (n *BoxInode) Create(ctx context.Context, name string, flags uint32, mode uint32, out *fuse.EntryOut) (node *fs.Inode, fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
 	log.Debug("Create:", n.Path(), "/", name)
-	// TODO:flags
 
+	if !CheckAllowProcess("Create", ctx) {
+		return nil, nil, 0, fs.ToErrno(os.ErrPermission)
+	}
+
+	// TODO:flags
 	caller, ok := fuse.FromContext(ctx)
 	if !ok {
 		log.Error("Getattr FromContext error")
@@ -451,6 +497,11 @@ func (n *BoxInode) Create(ctx context.Context, name string, flags uint32, mode u
 func (n *BoxInode) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
 	// TODO:flags
 	log.Debug("Open:", n.Path())
+
+	if !CheckAllowProcess("Open", ctx) {
+		return 0, 0, fs.ToErrno(os.ErrPermission)
+	}
+
 	bfile := &BoxFile{}
 	bfile.inode = n
 
@@ -481,6 +532,10 @@ func (f *BoxFile) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadRe
 	// TODO: read cache
 	log.Debug("Read:", f.inode.Path(), "|", off, "|", len(dest), "|", len(f.data))
 
+	if !CheckAllowProcess("Read", ctx) {
+		return nil, fs.ToErrno(os.ErrPermission)
+	}
+
 	end := 0
 	data := []byte("")
 	if off < int64(len(f.data)) {
@@ -508,6 +563,10 @@ func (f *BoxFile) Fsync(ctx context.Context, flags uint32) syscall.Errno {
 
 func (f *BoxFile) Write(ctx context.Context, data []byte, off int64) (written uint32, errno syscall.Errno) {
 	log.Debug("Write:", f.inode.Path(), "|", off, "|", len(data), "|", len(f.data))
+
+	if !CheckAllowProcess("Write", ctx) {
+		return 0, fs.ToErrno(os.ErrPermission)
+	}
 
 	if int64(len(f.data)) < off {
 		log.Errorf("Write: plain(%d) < off(%d)", len(f.data), off)
