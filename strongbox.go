@@ -13,6 +13,7 @@ import (
 
 	config "strongbox/configuration"
 	"strongbox/securefs"
+	"strongbox/ui"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
@@ -37,24 +38,8 @@ func credentials() (string, error) {
 func main() {
 	debug := flag.Bool("debug", false, "print debugging messages.")
 	configFile := flag.String("config", "config.yml", "config file.")
+	runAsUI := flag.Bool("ui", false, "run with ui.")
 	flag.Parse()
-
-	passwd, err := credentials()
-
-	if passwd == "" {
-		log.Fatal("must set password")
-	}
-
-	err = config.Cfg.Init(*configFile)
-	if err != nil {
-		log.Fatal("read config failed:", err)
-	}
-	config.Cfg.SetPasswd(passwd)
-
-	err = securefs.GetDBInstance().InitDB()
-	if err != nil {
-		log.Fatal("init db failed:", err)
-	}
 
 	logger := &lumberjack.Logger{
 		Filename:   "logs/box.log",
@@ -73,6 +58,28 @@ func main() {
 		TimestampFormat: "2006-01-02 15:04:05",
 		HideKeys:        true,
 	})
+
+	if *runAsUI {
+		ui.RunStrongBoxApp()
+		return
+	}
+
+	passwd, err := credentials()
+
+	if passwd == "" {
+		log.Fatal("must set password")
+	}
+
+	err = config.Cfg.Init(*configFile)
+	if err != nil {
+		log.Fatal("read config failed:", err)
+	}
+	config.Cfg.SetPasswd(passwd)
+
+	err = securefs.GetDBInstance().InitDB()
+	if err != nil {
+		log.Fatal("init db failed:", err)
+	}
 
 	// TODO:mountPoint empty
 	mountPoint := config.Cfg.MountPoint

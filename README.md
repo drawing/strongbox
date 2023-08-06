@@ -47,7 +47,7 @@ config file description
 # target file path
 mountPoint: /tmp/w1
 # encrypted persistent storage path
-secretPath: /tmp/w2
+secretPath: /tmp/w2/i.db
 # process whitelist, full binary path
 allowProcess:
   - "/usr/local/Cellar/git/2.29.2/bin/git"
