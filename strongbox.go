@@ -63,7 +63,7 @@ func main() {
 		MaxAge:     28,    //days
 		Compress:   false, // disabled by default
 	}
-	// TODO logger select
+	// TODO:logger select
 	if false {
 		log.SetOutput(logger)
 	}
@@ -74,7 +74,7 @@ func main() {
 		HideKeys:        true,
 	})
 
-	// TODO mountPoint empty
+	// TODO:mountPoint empty
 	mountPoint := config.Cfg.MountPoint
 	secretPath := config.Cfg.SecretPath
 

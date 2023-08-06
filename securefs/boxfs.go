@@ -1,6 +1,7 @@
 package securefs
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -80,19 +81,27 @@ func (a *BoxAttr) SetFromFuse(out *fuse.Attr) {
 	a.Gid = out.Gid
 }
 func (a *BoxAttr) SetFromAttrIn(in *fuse.SetAttrIn) {
-	if in.Size > 0 {
-		a.Size = in.Size
+	if m, ok := in.GetMode(); ok {
+		a.Mode = m
 	}
-	if in.Atime > 0 {
-		a.Atime = time.Unix(int64(in.Atime), int64(in.Atimensec))
+
+	uid, uok := in.GetUID()
+	gid, gok := in.GetGID()
+	if uok || gok {
+		a.Uid = uid
+		a.Gid = gid
 	}
-	if in.Mtime > 0 {
-		a.Mtime = time.Unix(int64(in.Mtime), int64(in.Mtimensec))
+
+	mtime, mok := in.GetMTime()
+	atime, aok := in.GetATime()
+	if mok || aok {
+		a.Atime = atime
+		a.Mtime = mtime
 	}
-	// a.Ctime = time.Unix(int64(in.Ctime), int64(in.Ctimensec))
-	a.Mode = in.Mode
-	a.Uid = in.Uid
-	a.Gid = in.Gid
+
+	if sz, ok := in.GetSize(); ok {
+		a.Size = sz
+	}
 }
 
 type BoxInode struct {
@@ -122,6 +131,14 @@ func (n *BoxInode) AddChildNode(name string) *BoxInode {
 	return c
 }
 
+func (n *BoxInode) AddExistChildNode(name string, node *BoxInode) {
+	if n.ChildrenNode == nil {
+		n.ChildrenNode = make(map[string]*BoxInode)
+	}
+	n.ChildrenNode[name] = node
+	node.parent = n
+}
+
 func (n *BoxInode) DelChildNode(name string) {
 	if n.ChildrenNode == nil {
 		return
@@ -129,18 +146,15 @@ func (n *BoxInode) DelChildNode(name string) {
 	delete(n.ChildrenNode, name)
 }
 
-func (n *BoxInode) RenameChildNode(src string, dst string) error {
+func (n *BoxInode) GetChildNode(name string) (*BoxInode, error) {
 	if n.ChildrenNode == nil {
-		return os.ErrNotExist
+		return nil, os.ErrNotExist
 	}
-	c, ok := n.ChildrenNode[src]
+	c, ok := n.ChildrenNode[name]
 	if !ok {
-		return os.ErrNotExist
+		return nil, os.ErrNotExist
 	}
-	delete(n.ChildrenNode, src)
-	c.Name = dst
-	n.ChildrenNode[dst] = c
-	return nil
+	return c, nil
 }
 
 func (n *BoxInode) UpdateToDB() error {
@@ -193,15 +207,17 @@ func LoadRootDirFromDB(b *BoxInode) error {
 		}
 	}
 
-	// log.Println("LOAD_DB:", b)
+	log.Println("Load: root dir load success")
 
 	return nil
 }
 
 func (n *BoxInode) Path() string {
-	// TODO
 	var c *BoxInode = n
 	path := c.Name
+	if path == "" {
+		path = "/"
+	}
 	c = c.parent
 	for c != nil {
 		path = c.Name + "/" + path
@@ -213,14 +229,31 @@ func (n *BoxInode) Path() string {
 // ------- fs api --------
 func (n *BoxInode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	n.Attr.GetToFuse(&out.Attr)
-	// log.Debug("Getattr()", n.Path(), ", ", out.Attr.Mode)
+	// log.Debug("Getatt:", n.Path())
 	return fs.OK
 }
 
 func (n *BoxInode) Setattr(ctx context.Context, f fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
-	log.Debug("Setattr()", n.Path(), ", ", in, ", ", out, ", ", in.Valid)
-	// TODO
-	// n.Attr.SetFromAttrIn(in)
+	log.Debug("Setattr:", n.Path())
+
+	n.Attr.SetFromAttrIn(in)
+
+	if sz, ok := in.GetSize(); ok {
+		if fh, fok := f.(*BoxFile); fok {
+			log.Warn("Truncate:", n.Path(), "|", sz)
+			if sz <= uint64(len(fh.data)) {
+				fh.data = fh.data[0:sz]
+			} else {
+				pading := bytes.Repeat([]byte{byte(0)}, int(sz)-len(fh.data))
+				fh.data = append(fh.data, pading...)
+			}
+			fserr := fh.Fsync(ctx, 0)
+			if fserr != fs.OK {
+				return fserr
+			}
+		}
+	}
+
 	n.Attr.GetToFuse(&out.Attr)
 	err := n.UpdateToDB()
 	if err != nil {
@@ -230,7 +263,7 @@ func (n *BoxInode) Setattr(ctx context.Context, f fs.FileHandle, in *fuse.SetAtt
 }
 
 func (n *BoxInode) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	log.Debug("Mkdir()", name)
+	log.Debug("Mkdir:", n.Path(), "/", name)
 
 	caller, ok := fuse.FromContext(ctx)
 	if !ok {
@@ -262,7 +295,7 @@ func (n *BoxInode) Mkdir(ctx context.Context, name string, mode uint32, out *fus
 }
 
 func (n *BoxInode) Rmdir(ctx context.Context, name string) syscall.Errno {
-	log.Debug("Rmdir()", name, ", ", n.Name)
+	log.Debug("Rmdir:", n.Path(), "/", name)
 	n.DelChildNode(name)
 
 	err := n.UpdateToDB()
@@ -272,10 +305,10 @@ func (n *BoxInode) Rmdir(ctx context.Context, name string) syscall.Errno {
 	return fs.OK
 }
 func (n *BoxInode) Unlink(ctx context.Context, name string) syscall.Errno {
-	log.Debug("Unlink()", name, ", ", n.Name)
+	log.Debug("Unlink:", n.Path(), "/", name)
 	isDir := n.IsDir()
 
-	// TODO Transaction
+	// TODO:Transaction
 	n.DelChildNode(name)
 	err := n.UpdateToDB()
 	if err != nil {
@@ -288,12 +321,45 @@ func (n *BoxInode) Unlink(ctx context.Context, name string) syscall.Errno {
 }
 
 func (n *BoxInode) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string, flags uint32) syscall.Errno {
-	// TODO
-	log.Debug("Rename()", name, ", ", n.Name)
-	err := n.RenameChildNode(name, newName)
+	log.Debug("Rename:", name, "|", newName)
+	c, err := n.GetChildNode(name)
 	if err != nil {
+		log.Error("Rename: src not exist ", err)
 		return fs.ToErrno(err)
 	}
+	oldPath := c.Path()
+
+	n.DelChildNode(name)
+	c.Name = newName
+	node, ok := newParent.(*BoxInode)
+	if !ok {
+		log.Error("Rename: InodeEmbedder error")
+		return fs.ToErrno(os.ErrInvalid)
+	}
+	node.AddExistChildNode(newName, c)
+	newPath := c.Path()
+
+	if !c.IsDir() {
+		log.Debug("RenameFile:", oldPath, "->", newPath)
+		data, err := GetDBInstance().Get([]byte(oldPath))
+		if err != nil {
+			log.Error("rename file not exist:", err)
+			return fs.ToErrno(err)
+		}
+		err = GetDBInstance().Del([]byte(oldPath))
+		if err != nil {
+			log.Error("rename del file failed:", err)
+			return fs.ToErrno(err)
+		}
+		err = GetDBInstance().Set([]byte(newPath), data)
+		if err != nil {
+			log.Error("rename set file failed:", err)
+			return fs.ToErrno(err)
+		}
+	} else {
+		log.Debug("RenameDir:", oldPath, "->", newPath)
+	}
+
 	err = n.UpdateToDB()
 	if err != nil {
 		return fs.ToErrno(os.ErrInvalid)
@@ -303,9 +369,10 @@ func (n *BoxInode) Rename(ctx context.Context, name string, newParent fs.InodeEm
 }
 
 func (n *BoxInode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	// log.Debug("Lookup()", name, ",", n.Name, "|", n.ChildrenNode)
+	log.Debug("Lookup:", n.Path(), "/", name)
 
 	if n.ChildrenNode == nil {
+		log.Warn("Lookup: children not exist ", n.Path(), "/", name)
 		return nil, fs.ToErrno(os.ErrNotExist)
 	}
 
@@ -322,33 +389,12 @@ func (n *BoxInode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) 
 		}
 	}
 
+	log.Warn("Lookup: children not found ", n.Path(), "/", name)
 	return nil, fs.ToErrno(os.ErrNotExist)
 }
 
-type DirEntryReader struct {
-	index int
-	dirs  []fuse.DirEntry
-}
-
-func (d *DirEntryReader) HasNext() bool {
-	if d.index < len(d.dirs) {
-		return true
-	}
-	return false
-}
-func (d *DirEntryReader) Next() (fuse.DirEntry, syscall.Errno) {
-	if d.index >= len(d.dirs) {
-		return fuse.DirEntry{}, fs.ToErrno(os.ErrInvalid)
-	}
-	dir := d.dirs[d.index]
-	d.index++
-	return dir, fs.OK
-}
-func (d *DirEntryReader) Close() {
-}
-
 func (n *BoxInode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
-	log.Debug("Readdir()", n.Name, ", ", len(n.ChildrenNode))
+	log.Debug("Readdir:", n.Path(), "|", len(n.ChildrenNode))
 	r := DirEntryReader{}
 	for _, v := range n.ChildrenNode {
 		dir := fuse.DirEntry{}
@@ -357,17 +403,17 @@ func (n *BoxInode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 		dir.Name = v.Name
 		r.dirs = append(r.dirs, dir)
 	}
-	log.Debug("Readdir() --- ", r)
+	// log.Debug("Readdir() --- ", r)
 	return &r, fs.OK
 }
 
 func (n *BoxInode) String() string {
-	return fmt.Sprint("Name:", n.Name, ", Attr=", n.Attr)
+	return fmt.Sprint("Name:", n.Path(), ", Attr=", n.Attr)
 }
 
 func (n *BoxInode) Create(ctx context.Context, name string, flags uint32, mode uint32, out *fuse.EntryOut) (node *fs.Inode, fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
-	log.Debug("Create()", n.Name, ", ", len(n.ChildrenNode))
-	// TODO flags
+	log.Debug("Create:", n.Path(), "/", name)
+	// TODO:flags
 
 	caller, ok := fuse.FromContext(ctx)
 	if !ok {
@@ -403,8 +449,8 @@ func (n *BoxInode) Create(ctx context.Context, name string, flags uint32, mode u
 }
 
 func (n *BoxInode) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
-	// TODO flags
-	log.Debug("Open()", n.Name, ", ", n)
+	// TODO:flags
+	log.Debug("Open:", n.Path())
 	bfile := &BoxFile{}
 	bfile.inode = n
 
@@ -419,6 +465,11 @@ func (n *BoxInode) Open(ctx context.Context, flags uint32) (fh fs.FileHandle, fu
 	return bfile, flags, fs.OK
 }
 
+func (n *BoxInode) Fsync(ctx context.Context, f fs.FileHandle, flags uint32) syscall.Errno {
+	// TODO: Write cache, persist when sync
+	return fs.OK
+}
+
 // ==============================================================================================
 
 type BoxFile struct {
@@ -427,8 +478,8 @@ type BoxFile struct {
 }
 
 func (f *BoxFile) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
-	// TODO read cache
-	log.Debug("Read()", f.inode.Name, ", ", len(f.data), "|", off, "|", len(dest))
+	// TODO: read cache
+	log.Debug("Read:", f.inode.Path(), "|", off, "|", len(dest), "|", len(f.data))
 
 	end := 0
 	data := []byte("")
@@ -440,14 +491,23 @@ func (f *BoxFile) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadRe
 		data = f.data[off:end]
 	}
 
-	log.Debug("Read()", len(data))
+	// log.Debug("Read()", len(data))
 	res := &readResult{data}
 
 	return res, fs.OK
 }
 
+func (f *BoxFile) Fsync(ctx context.Context, flags uint32) syscall.Errno {
+	err := GetDBInstance().Set([]byte(f.inode.Path()), f.data)
+	if err != nil {
+		log.Error("Write DB failed:", err)
+		return fs.ToErrno(os.ErrInvalid)
+	}
+	return fs.OK
+}
+
 func (f *BoxFile) Write(ctx context.Context, data []byte, off int64) (written uint32, errno syscall.Errno) {
-	log.Debug("Write()", f.inode.Name)
+	log.Debug("Write:", f.inode.Path(), "|", off, "|", len(data), "|", len(f.data))
 
 	if int64(len(f.data)) < off {
 		log.Errorf("Write: plain(%d) < off(%d)", len(f.data), off)
@@ -462,15 +522,14 @@ func (f *BoxFile) Write(ctx context.Context, data []byte, off int64) (written ui
 		}
 	}
 
-	// TODO Transaction
-	err := GetDBInstance().Set([]byte(f.inode.Path()), f.data)
-	if err != nil {
-		log.Error("Write DB failed:", err)
-		return 0, fs.ToErrno(os.ErrInvalid)
+	fserr := f.Fsync(ctx, 0)
+	if fserr != fs.OK {
+		return 0, fserr
 	}
 
+	// TODO:Transaction
 	f.inode.Attr.Size = uint64(len(f.data))
-	err = f.inode.UpdateToDB()
+	err := f.inode.UpdateToDB()
 	if err != nil {
 		return uint32(len(data)), fs.ToErrno(err)
 	}

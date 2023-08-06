@@ -1,32 +1,23 @@
 package securefs
 
 import (
-	"bytes"
-	"encoding/gob"
+	"encoding/json"
 	"testing"
 )
 
-func TestGob(t *testing.T) {
+func TestJsonUnmarshal(t *testing.T) {
 
-	gob.Register(PersistenceNode{})
+	root := &BoxInode{}
+	root.Name = "Test Root"
 
-	root := NewPersistenceNode(nil)
+	root.AddChildNode("1.txt")
+	c := root.AddChildNode("dir1")
+	c.AddChildNode("dir2")
 
-	root.AddChild("1.txt")
-	c := root.AddChild("dir1")
-	c.AddChild("dir2")
+	data, err := json.Marshal(root)
 
-	var network bytes.Buffer
-	enc := gob.NewEncoder(&network)
-	err := enc.Encode(root)
-	if err != nil {
-		t.Fatal("Encode:", err)
-	}
-
-	dec := gob.NewDecoder(&network)
-	root_new := &PersistenceNode{}
-
-	err = dec.Decode(root_new)
+	root_new := &BoxInode{}
+	err = json.Unmarshal(data, root_new)
 	if err != nil {
 		t.Fatal("Decode:", err)
 	}
@@ -37,13 +28,7 @@ func TestGob(t *testing.T) {
 	if root.parent != root_new.parent {
 		t.Fatal("root.Parent not equal")
 	}
-	if len(root.Children) != len(root_new.Children) {
+	if len(root.ChildrenNode) != len(root_new.ChildrenNode) {
 		t.Fatal("root_new.Children len not equal")
-	}
-	if root.Children[0].Name != root_new.Children[0].Name {
-		t.Fatal("root.Children[0].Name not equal")
-	}
-	if root_new.Children[0].parent != root_new {
-		t.Fatal("root.Children[0].Parent not equal root_new")
 	}
 }
