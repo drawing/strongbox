@@ -46,14 +46,32 @@ config file description
 ```yaml
 # target file path
 mountPoint: /tmp/w1
-# encrypted persistent storage path
+
 secretPath: /tmp/w2/i.db
-# process whitelist, full binary path
+
 allowProcess:
   - "/usr/local/Cellar/git/2.29.2/bin/git"
   - "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
 # watchMode=true only prints interception information, does not perform interception operations
 watchMode: false
+
+# target mount path
+mountPoint: /tmp/w1
+backup:
+  # encrypted persistent storage path
+  path: /tmp/w2/i.db
+  # backup in memory
+  memory: false
+permission:
+  defaultAction: deny
+  # process whitelist, full binary path
+  allowProcess:
+    - "/bin/sh"
+    - "/bin/ls"
+    - "/bin/rm"
+    - "/bin/mkdir"
+logger:
+  level: debug
 ```
 
 To start the process, you need to enter a password.

@@ -1,8 +1,16 @@
 mountPoint: /tmp/w1
-secretPath: /tmp/w2/i.db
-allowProcess:
-  - "/usr/local/Cellar/git/2.29.2/bin/git"
-  - "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
-  - "/Applications/Typora.app/Contents/MacOS/Typora"
-  - "/bin/zsh"
-watchMode: false
+backup:
+  path: /tmp/w2/i.db
+  memory: false
+permission:
+  defaultAction: deny
+  allowProcess:
+    - "/usr/local/Cellar/git/2.29.2/bin/git"
+    - "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
+    - "/Applications/Typora.app/Contents/MacOS/Typora"
+    - "/bin/zsh"
+    - "/bin/ls"
+    - "/bin/rm"
+    - "/bin/mkdir"
+logger:
+  level: debug

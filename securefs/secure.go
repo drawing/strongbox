@@ -45,7 +45,6 @@ func execCmd(pid uint32) {
 		log.Printf("out:%s", string(out))
 	}
 */
-
 /*
 func init() {
 	var err error
@@ -53,7 +52,21 @@ func init() {
 		processCache, err = lru.New[uint32, *processItem](maxProcessCacheSize)
 		if err != nil {
 			log.Error("init lru.New error:", err)
+			return
 		}
+	}
+	ps, err := process.Processes()
+	if err != nil {
+		log.Error("init Processes get error:", err)
+		return
+	}
+	for _, v := range ps {
+		exeFile, err := v.Exe()
+		if err != nil {
+			continue
+		}
+		p := &processItem{exeFile, time.Now()}
+		processCache.Add(uint32(v.Pid), p)
 	}
 }
 */
@@ -82,7 +95,7 @@ func CheckAllowProcess(action string, ctx context.Context) bool {
 		}
 	}
 	ps, ok := processCache.Get(caller.Pid)
-	if !ok || ps.uptime.After(time.Now().Add(30*time.Second)) {
+	if !ok || ps.uptime.After(time.Now().Add(300*time.Second)) {
 		// log.Warn(action, " ----- new process start ----- ", caller.Pid)
 		nps, err := process.NewProcess(int32(caller.Pid))
 		if err != nil {
@@ -100,18 +113,25 @@ func CheckAllowProcess(action string, ctx context.Context) bool {
 		processCache.Add(caller.Pid, ps)
 	}
 
-	for _, v := range configuration.Cfg.AllowProcess {
+	for _, v := range configuration.Cfg.Permission.AllowProcess {
 		if ps.exec == v {
 			// log.Debug("Leave 2 PID:", caller.Pid)
 			return true
 		}
 	}
-
-	if cfg.Cfg.WatchMode {
-		log.Warn(action, " process forbid(WatchMode):", caller.Pid, " ", ps.exec, ", ", os.Getpid())
-		return true
+	for _, v := range configuration.Cfg.Permission.DenyProcess {
+		if ps.exec == v {
+			log.Warn(action, " process(deny):", caller.Pid, " ", ps.exec, ", ", os.Getpid())
+			return false
+		}
 	}
-	// log.Debug("Leave 3 PID:", caller.Pid)
-	log.Warn(action, " process forbid:", caller.Pid, " ", ps.exec, ", ", os.Getpid())
-	return false
+
+	if cfg.Cfg.Permission.DefaultAction == "pass" {
+		log.Warn(action, " process(default pass):", caller.Pid, " ", ps.exec, ", ", os.Getpid())
+		return true
+	} else {
+		// log.Debug("Leave 3 PID:", caller.Pid)
+		log.Warn(action, " process(default deny):", caller.Pid, " ", ps.exec, ", ", os.Getpid())
+		return false
+	}
 }
