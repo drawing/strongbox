@@ -28,7 +28,7 @@ func ShowQuicDialog(a fyne.App, msg string, win fyne.Window) {
 	q.Show()
 }
 
-func ShowPasswordDialog(win fyne.Window) {
+func ShowPasswordDialog(a fyne.App, win fyne.Window) {
 	const leastPasswdLen = 3
 	passwd := ""
 	passwdEntry := widget.NewPasswordEntry()
@@ -49,6 +49,8 @@ func ShowPasswordDialog(win fyne.Window) {
 	d := dialog.NewForm("Input Password", "Submit", "Cancel", items, func(confirm bool) {
 		if confirm {
 			cfg.Cfg.SetPasswd(passwd)
+		} else {
+			a.Quit()
 		}
 	}, win)
 
@@ -299,7 +301,7 @@ func RunStrongBoxApp() {
 
 	win.Resize(fyne.NewSize(650, 480))
 
-	ShowPasswordDialog(win)
+	ShowPasswordDialog(a, win)
 
 	win.ShowAndRun()
 }
