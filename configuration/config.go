@@ -13,6 +13,13 @@ import (
 
 var Cfg Configuration
 
+var innerCfg innerConfiguration
+
+type innerConfiguration struct {
+	ConfigFile string
+	SecretKey  []byte
+}
+
 type LoggerConfig struct {
 	Filename string `yaml:"filename,omitempty"`
 	// [debug, info, warn, error]
@@ -34,15 +41,11 @@ type BackupConfig struct {
 }
 
 type Configuration struct {
-	ConfigFile string
-
 	MountPoint string `yaml:"mountPoint,omitempty"`
 
 	Permission PermissionConfig `yaml:"permission,omitempty"`
 	Logger     LoggerConfig     `yaml:"logger,omitempty"`
 	Backup     BackupConfig     `yaml:"backup,omitempty"`
-
-	SecretKey []byte
 }
 
 func (c *Configuration) initLogger() {
@@ -83,7 +86,7 @@ func (c *Configuration) Load(file string) error {
 	// backup default value
 	c.Backup.Memory = true
 	c.Backup.Path = ""
-	c.ConfigFile = file
+	innerCfg.ConfigFile = file
 
 	err = yaml.Unmarshal(yamlConfig, c)
 	if err != nil {
@@ -105,7 +108,7 @@ func (c *Configuration) Save() error {
 		return err
 	}
 
-	err = os.WriteFile(c.ConfigFile, out, 0777)
+	err = os.WriteFile(innerCfg.ConfigFile, out, 0777)
 	if err != nil {
 		log.Error("write config:", err)
 		return err
@@ -118,5 +121,9 @@ func (c *Configuration) SetPasswd(passwd string) {
 	h := sha1.New()
 	s := h.Sum([]byte(passwd))
 
-	c.SecretKey = s[0:16]
+	innerCfg.SecretKey = s[0:16]
+}
+
+func (c *Configuration) GetCryptKey() []byte {
+	return innerCfg.SecretKey
 }

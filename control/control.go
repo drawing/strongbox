@@ -14,7 +14,8 @@ import (
 )
 
 type Control struct {
-	server *fuse.Server
+	server  *fuse.Server
+	running bool
 }
 
 var controlInstance *Control
@@ -27,6 +28,10 @@ func GetControl() *Control {
 }
 
 func (c *Control) Mount() error {
+	if c.running {
+		return errors.New("already mounted")
+	}
+
 	err := securefs.GetDBInstance().InitDB()
 	if err != nil {
 		log.Error("init db failed:", err)
@@ -63,15 +68,26 @@ func (c *Control) Mount() error {
 		return err
 	}
 	log.Info("Mounted: ", mountPoint)
+
+	c.running = true
 	return nil
 }
 
 func (c *Control) Wait() {
 	c.server.Wait()
+	log.Info("Wait Finish")
+}
+
+func (c *Control) Running() bool {
+	return c.running
 }
 
 func (c *Control) Unmount() {
+	if !c.running {
+		return
+	}
 	log.Info("Unmount: ", config.Cfg.MountPoint)
 	c.server.Unmount()
 	securefs.GetDBInstance().Close()
+	c.running = false
 }

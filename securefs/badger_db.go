@@ -48,8 +48,8 @@ func (db *BadgerDB) DebugKeys() {
 }
 
 func (db *BadgerDB) InitDB() error {
-	skey := cfg.Cfg.SecretKey
-	opt := badger.DefaultOptions(cfg.Cfg.Backup.Path)
+	skey := cfg.Cfg.GetCryptKey()
+	opt := badger.DefaultOptions("")
 	opt.EncryptionKey = skey
 	opt.BlockCacheSize = 100 << 10
 	opt.IndexCacheSize = 100 << 20
@@ -59,6 +59,9 @@ func (db *BadgerDB) InitDB() error {
 
 	if cfg.Cfg.Backup.Memory {
 		opt = opt.WithInMemory(true)
+	} else {
+		opt.Dir = cfg.Cfg.Backup.Path
+		opt.ValueDir = cfg.Cfg.Backup.Path
 	}
 
 	var err error

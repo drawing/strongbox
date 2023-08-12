@@ -27,7 +27,7 @@ func credentials() (string, error) {
 }
 
 func main() {
-	runAsUI := flag.Bool("ui", false, "run with ui.")
+	runAsUI := flag.Bool("ui", true, "run with ui.")
 	configFile := flag.String("c", "config.yml", "config file.")
 	flag.Parse()
 
@@ -35,6 +35,13 @@ func main() {
 	if err != nil {
 		log.Fatal("read config file error:", err)
 	}
+
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		control.GetControl().Unmount()
+	}()
 
 	if *runAsUI {
 		control.RunStrongBoxApp()
@@ -51,13 +58,6 @@ func main() {
 	if err != nil {
 		log.Fatal("Mount failed:", err)
 	}
-
-	c := make(chan os.Signal)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-c
-		control.GetControl().Unmount()
-	}()
 
 	control.GetControl().Wait()
 }

@@ -27,6 +27,20 @@ type processItem struct {
 
 var processCache *lru.Cache[uint32, *processItem] = nil
 
+var forbidCache *lru.Cache[string, time.Time] = nil
+
+func init() {
+	forbidCache, _ = lru.New[string, time.Time](maxProcessCacheSize)
+}
+
+func GetForbidProcess() []string {
+	if forbidCache == nil {
+		return []string{}
+	} else {
+		return forbidCache.Keys()
+	}
+}
+
 /*
 func execCmd(pid uint32) {
 
@@ -122,6 +136,7 @@ func CheckAllowProcess(action string, ctx context.Context) bool {
 	for _, v := range configuration.Cfg.Permission.DenyProcess {
 		if ps.exec == v {
 			log.Warn(action, " process(deny):", caller.Pid, " ", ps.exec, ", ", os.Getpid())
+			forbidCache.Add(ps.exec, time.Now())
 			return false
 		}
 	}
@@ -132,6 +147,7 @@ func CheckAllowProcess(action string, ctx context.Context) bool {
 	} else {
 		// log.Debug("Leave 3 PID:", caller.Pid)
 		log.Warn(action, " process(default deny):", caller.Pid, " ", ps.exec, ", ", os.Getpid())
+		forbidCache.Add(ps.exec, time.Now())
 		return false
 	}
 }
