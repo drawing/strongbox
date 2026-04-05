@@ -1,81 +1,113 @@
-# strongbox
+# Strongbox
 
 ## Introduction
 
-strongbox is used to keep files safe, When the system reads and writes files, strongbox captures the event through the fuse callback, judges the permission of the read and write process, and encrypts and decrypts the read and write persistent storage to ensure file security.
+Strongbox is a secure file system that protects your files through FUSE (Filesystem in Userspace). It monitors file operations through FUSE callbacks, enforces process-based access control, and encrypts all persistent storage to ensure data security.
 
-## Capability
+## Features
 
-* Manage read and write directory/file permissions through process whitelist
-* Encrypt local persistent files
+- **Process-based Access Control**: Manage file/directory permissions using process whitelists
+- **Transparent Encryption**: Automatically encrypts and decrypts files during read/write operations
+- **Cross-platform Support**: Works on Linux, macOS, and Windows
+- **Secure Storage**: All files are encrypted before being stored on disk
+- **Memory-backed Option**: Supports in-memory storage for temporary data
 
 ## Architecture
 
 ```mermaid
 graph TD
     user(User/Program)
-    filesystem(Linux/Mac/Windows 's Filesystem)
-    fuse(Fuse Filesystem)
+    filesystem(OS Filesystem)
+    fuse(FUSE Filesystem)
     subgraph strongbox
-        access(Program Access Control)
-        encrypt(Encrypted File Content)
-        fs(Persistent Storage)
+        access(Access Control)
+        encrypt(Encryption/Decryption)
+        storage(Persistent Storage)
         access --> encrypt
-        encrypt --> fs
+        encrypt --> storage
     end
-    user -->|manage files| filesystem
+    user -->|File Operations| filesystem
     filesystem --> fuse
-    fuse -->|callback| strongbox
+    fuse -->|Callbacks| strongbox
 ```
 
 ## Usage
 
-Start by command
+### Command Line
 
 ```shell
-Usage of ./strongbox:
+Usage: ./strongbox [options]
   -c string
-        config file. (default "config.yml")
-Exmaple:
+        Path to configuration file (default "config.yml")
+  -ui
+        Run with GUI interface (default: true)
+
+Example:
     strongbox -c ./config.yml
 ```
 
-config file description
+### Configuration File
 
 ```yaml
-# target file path
-mountPoint: /tmp/w1
+# Mount point for the secure filesystem
+mountPoint: /tmp/securebox
 
-secretPath: /tmp/w2/i.db
-
-allowProcess:
-  - "/usr/local/Cellar/git/2.29.2/bin/git"
-  - "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
-# watchMode=true only prints interception information, does not perform interception operations
-watchMode: false
-
-# target mount path
-mountPoint: /tmp/w1
 backup:
-  # encrypted persistent storage path
-  path: /tmp/w2/i.db
-  # backup in memory
+  # Path to encrypted persistent storage
+  path: /tmp/securebox_backup.db
+  # Enable in-memory storage (true/false)
   memory: false
+
 permission:
+  # Default action for unlisted processes (pass/deny)
   defaultAction: deny
-  # process whitelist, full binary path
+  # Process whitelist (full binary paths)
   allowProcess:
-    - "/bin/sh"
+    - "/bin/zsh"
     - "/bin/ls"
     - "/bin/rm"
     - "/bin/mkdir"
+    - "/usr/local/bin/git"
+    - "/Applications/Visual Studio Code.app/Contents/MacOS/Electron"
+
 logger:
-  level: debug
+  # Log level (debug, info, warn, error)
+  level: info
 ```
 
-To start the process, you need to enter a password.
+### Getting Started
 
-After completion, only the whitelist process can operate the files and directories in `/tmp/w1`, and other processes have no permission to access. And the files in this directory are encrypted then saved to `/tmp/w2/i.db`, so there is no need to worry about the risk of leakage.
+1. **Set Up Configuration**: Edit `config.yml` to specify your mount point and allowed processes
+2. **Start Strongbox**: Run `./strongbox -c ./config.yml`
+3. **Enter Password**: You will be prompted to enter a password for encryption
+4. **Access Files**: Only whitelisted processes can access files in the mount point
+5. **Automatic Encryption**: All files are encrypted before being stored
 
-## Use GUI
+## Security
+
+- **AES Encryption**: Uses AES-128 encryption for all stored data
+- **Process Verification**: Verifies process identities before granting access
+- **Secure Key Management**: Passwords are hashed and never stored in plaintext
+- **Isolated Storage**: Encrypted data is stored separately from the mount point
+
+## GUI Interface
+
+Strongbox also provides a GUI interface for easier management. Run with `-ui` flag to use the GUI.
+
+## Build & Installation
+
+### Prerequisites
+
+- Go 1.16+
+- FUSE (macOS: macFUSE, Linux: libfuse, Windows: WinFsp)
+
+### Build
+
+```shell
+go build -o strongbox
+```
+
+## License
+
+MIT
 

@@ -396,7 +396,7 @@ func (n *BoxInode) Rename(ctx context.Context, name string, newParent fs.InodeEm
 		return fs.ToErrno(os.ErrInvalid)
 	}
 
-	return fs.ToErrno(err)
+	return fs.OK
 }
 
 func (n *BoxInode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {

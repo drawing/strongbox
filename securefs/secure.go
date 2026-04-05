@@ -3,6 +3,7 @@ package securefs
 import (
 	"context"
 	"os"
+	"sync"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -26,6 +27,7 @@ type processItem struct {
 }
 
 var processCache *lru.Cache[uint32, *processItem] = nil
+var processCacheMu sync.Mutex
 
 var forbidCache *lru.Cache[string, time.Time] = nil
 
@@ -93,43 +95,41 @@ func CheckAllowProcess(action string, ctx context.Context) bool {
 		log.Error(action, " FromContext error")
 		return false
 	}
-	// log.Debug("Enter PID:", caller.Pid)
 
-	// 2023-08-04 23:46:53 [WARN] Getattr ----- new process start ----- 3102
 	if os.Getpid() == int(caller.Pid) || 0 == caller.Pid {
 		log.Debug("Leave 1 PID:", caller.Pid)
 		return true
 	}
 
+	processCacheMu.Lock()
 	if processCache == nil {
 		processCache, err = lru.New[uint32, *processItem](maxProcessCacheSize)
 		if err != nil {
+			processCacheMu.Unlock()
 			log.Error(action, " lru.New error:", err)
 			return false
 		}
 	}
+	processCacheMu.Unlock()
+	
 	ps, ok := processCache.Get(caller.Pid)
-	if !ok || ps.uptime.After(time.Now().Add(300*time.Second)) {
-		// log.Warn(action, " ----- new process start ----- ", caller.Pid)
-		nps, err := process.NewProcess(int32(caller.Pid))
-		if err != nil {
-			log.Error(action, " process.NewProcess error:", err)
-			return false
+	if !ok || time.Now().After(ps.uptime.Add(300*time.Second)) {
+		exeFile := getProcessExeWithTimeout(caller.Pid)
+		if exeFile == "" {
+			log.Error(action, " get process exe failed, PID:", caller.Pid)
+			if ok {
+				log.Warn(action, " using cached process info, PID:", caller.Pid)
+			} else {
+				return false
+			}
+		} else {
+			ps = &processItem{exeFile, time.Now()}
+			processCache.Add(caller.Pid, ps)
 		}
-		exeFile, err := nps.Exe()
-		if err != nil {
-			log.Error(action, " ps.Exe error:", err)
-			return false
-		}
-
-		// log.Warn(action, " ----- new process end ----- ", caller.Pid, ", ", exeFile)
-		ps = &processItem{exeFile, time.Now()}
-		processCache.Add(caller.Pid, ps)
 	}
 
 	for _, v := range configuration.Cfg.Permission.AllowProcess {
 		if ps.exec == v {
-			// log.Debug("Leave 2 PID:", caller.Pid)
 			return true
 		}
 	}
@@ -145,9 +145,45 @@ func CheckAllowProcess(action string, ctx context.Context) bool {
 		log.Warn(action, " process(default pass):", caller.Pid, " ", ps.exec, ", ", os.Getpid())
 		return true
 	} else {
-		// log.Debug("Leave 3 PID:", caller.Pid)
 		log.Warn(action, " process(default deny):", caller.Pid, " ", ps.exec, ", ", os.Getpid())
 		forbidCache.Add(ps.exec, time.Now())
 		return false
+	}
+}
+
+func getProcessExeWithTimeout(pid uint32) string {
+	resultChan := make(chan string, 1)
+	
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error("getProcessExeWithTimeout panic:", r)
+				resultChan <- ""
+			}
+		}()
+		
+		nps, err := process.NewProcess(int32(pid))
+		if err != nil {
+			log.Error("process.NewProcess error:", err)
+			resultChan <- ""
+			return
+		}
+		
+		exeFile, err := nps.Exe()
+		if err != nil {
+			log.Error("ps.Exe error:", err)
+			resultChan <- ""
+			return
+		}
+		
+		resultChan <- exeFile
+	}()
+	
+	select {
+	case exeFile := <-resultChan:
+		return exeFile
+	case <-time.After(100 * time.Millisecond):
+		log.Warn("getProcessExeWithTimeout timeout, PID:", pid)
+		return ""
 	}
 }

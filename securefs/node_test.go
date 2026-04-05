@@ -14,7 +14,7 @@ import (
 )
 
 func init() {
-	cfg.Cfg.BackupInMemory = true
+	cfg.Cfg.Backup.Memory = true
 	err := GetDBInstance().InitDB()
 	if err != nil {
 		fmt.Println("InitDB:", err)
