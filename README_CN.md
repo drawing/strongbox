@@ -48,6 +48,8 @@ graph TD
 
 ### 配置文件
 
+默认配置文件位于 `~/.strongbox/config.yml`。如果目录不存在，会自动创建。
+
 ```yaml
 # 安全文件系统的挂载点
 mountPoint: /tmp/securebox
@@ -77,8 +79,8 @@ logger:
 
 ### 快速开始
 
-1. **设置配置**：编辑 `config.yml` 指定挂载点和允许的进程
-2. **启动 Strongbox**：运行 `./strongbox -c ./config.yml`
+1. **设置配置**：编辑 `~/.strongbox/config.yml` 指定挂载点和允许的进程
+2. **启动 Strongbox**：运行 `./strongbox`（使用默认配置 `~/.strongbox/config.yml`）或 `./strongbox -c ./config.yml` 使用自定义配置文件
 3. **输入密码**：系统会提示输入加密密码
 4. **访问文件**：只有白名单中的进程可以访问挂载点中的文件
 5. **自动加密**：所有文件在存储前都会被加密
@@ -101,10 +103,31 @@ Strongbox 还提供了 GUI 界面，便于管理。使用 `-ui` 标志运行以�
 - Go 1.16+
 - FUSE（macOS: macFUSE，Linux: libfuse，Windows: WinFsp）
 
-### 构建
+### 构建控制台应用程序
 
 ```shell
 go build -o strongbox
+```
+
+### 构建 GUI 应用程序（macOS）
+
+要在 macOS 上创建没有控制台窗口的 GUI 应用程序：
+
+1. 安装 fyne 工具：
+```shell
+go install fyne.io/tools/cmd/fyne@latest
+```
+
+2. 创建名为 `Icon.png` 的图标文件（至少 128x128 像素）
+
+3. 打包应用程序：
+```shell
+fyne package -os darwin --app-id com.strongbox.app -name StrongBox
+```
+
+4. 运行应用程序：
+```shell
+open StrongBox.app
 ```
 
 ## 许可证

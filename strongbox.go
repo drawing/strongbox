@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"os/user"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 
@@ -26,9 +29,39 @@ func credentials() (string, error) {
 	return strings.TrimSpace(password), nil
 }
 
+func getDefaultConfigPath() string {
+	usr, err := user.Current()
+	if err != nil {
+		log.Warn("Failed to get current user:", err)
+		return "config.yml"
+	}
+	configDir := filepath.Join(usr.HomeDir, ".strongbox")
+	err = os.MkdirAll(configDir, 0755)
+	if err != nil {
+		log.Warn("Failed to create config directory:", err)
+		return "config.yml"
+	}
+	return filepath.Join(configDir, "config.yml")
+}
+
+func canRunUI() bool {
+	switch runtime.GOOS {
+	case "darwin":
+		return os.Getenv("DISPLAY") != "" || os.Getenv("APP_NAME") != "" || os.Getenv("HOME") != ""
+	case "linux":
+		return os.Getenv("DISPLAY") != "" || os.Getenv("WAYLAND_DISPLAY") != ""
+	case "windows":
+		return true
+	default:
+		return false
+	}
+}
+
 func main() {
-	runAsUI := flag.Bool("ui", true, "run with ui.")
-	configFile := flag.String("c", "config.yml", "config file.")
+	defaultConfigPath := getDefaultConfigPath()
+	
+	runAsUI := flag.Bool("ui", canRunUI(), "run with ui.")
+	configFile := flag.String("c", defaultConfigPath, "config file.")
 	flag.Parse()
 
 	err := config.Cfg.Load(*configFile)

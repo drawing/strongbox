@@ -48,6 +48,8 @@ Example:
 
 ### Configuration File
 
+The default configuration file is located at `~/.strongbox/config.yml`. If the directory doesn't exist, it will be created automatically.
+
 ```yaml
 # Mount point for the secure filesystem
 mountPoint: /tmp/securebox
@@ -77,8 +79,8 @@ logger:
 
 ### Getting Started
 
-1. **Set Up Configuration**: Edit `config.yml` to specify your mount point and allowed processes
-2. **Start Strongbox**: Run `./strongbox -c ./config.yml`
+1. **Set Up Configuration**: Edit `~/.strongbox/config.yml` to specify your mount point and allowed processes
+2. **Start Strongbox**: Run `./strongbox` (uses default config at `~/.strongbox/config.yml`) or `./strongbox -c ./config.yml` to use a custom config file
 3. **Enter Password**: You will be prompted to enter a password for encryption
 4. **Access Files**: Only whitelisted processes can access files in the mount point
 5. **Automatic Encryption**: All files are encrypted before being stored
@@ -101,10 +103,31 @@ Strongbox also provides a GUI interface for easier management. Run with `-ui` fl
 - Go 1.16+
 - FUSE (macOS: macFUSE, Linux: libfuse, Windows: WinFsp)
 
-### Build
+### Build as Console Application
 
 ```shell
 go build -o strongbox
+```
+
+### Build as GUI Application (macOS)
+
+To create a GUI application without console window on macOS:
+
+1. Install fyne tools:
+```shell
+go install fyne.io/tools/cmd/fyne@latest
+```
+
+2. Create an icon file named `Icon.png` (at least 128x128 pixels)
+
+3. Package the application:
+```shell
+fyne package -os darwin --app-id com.strongbox.app -name StrongBox
+```
+
+4. Run the application:
+```shell
+open StrongBox.app
 ```
 
 ## License

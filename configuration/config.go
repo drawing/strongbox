@@ -79,6 +79,21 @@ func (c *Configuration) initLogger() {
 func (c *Configuration) Load(file string) error {
 	yamlConfig, err := os.ReadFile(file)
 	if err != nil {
+		if os.IsNotExist(err) {
+			log.Info("Config file not found, creating default config:", file)
+			c.Backup.Memory = true
+			c.Backup.Path = ""
+			c.MountPoint = "/tmp/strongbox"
+			c.Permission.DefaultAction = "deny"
+			c.Logger.Level = "info"
+			innerCfg.ConfigFile = file
+			if err := c.Save(); err != nil {
+				log.Error("Failed to create default config:", err)
+				return err
+			}
+			log.Info("Default config created successfully")
+			return nil
+		}
 		log.Error("yamlFile Open err:", err)
 		return err
 	}
